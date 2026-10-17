@@ -132,28 +132,45 @@ public final class PlayController implements AutoCloseable {
         return forcedOutcome != null ? forcedOutcome : game.position().outcome();
     }
 
-    /**
-     * Starts a new game. With an engine, the process is started in the background and play begins once it is ready. Any game
-     * and engine in progress are dropped.
-     */
+    /** Starts a new game from the standard start position; see {@link #startGame(GameSetup, EngineConfig, Position)}. */
     public void startGame(GameSetup setup, EngineConfig engine) {
+        startGame(setup, engine, Position.start());
+    }
+
+    /**
+     * Starts a new game from {@code start}. With an engine, the process is started in the background and play begins once it is
+     * ready. Any game and engine in progress are dropped.
+     */
+    public void startGame(GameSetup setup, EngineConfig engine, Position start) {
+        begin(setup, setup.vsEngine() ? engine : null, new Game(start));
+    }
+
+    /**
+     * Continues a loaded game as a game between two people (the engine, if any, is dropped); {@code loaded} is played on from
+     * its last position.
+     */
+    public void loadGame(Game loaded) {
+        begin(new GameSetup(null, Side.X, GameSetup.DEFAULT.timeControl()), null, loaded);
+    }
+
+    private void begin(GameSetup setup, EngineConfig engine, Game newGame) {
         gameGeneration++;
         searchSerial++;
         long gen = gameGeneration;
         dropEngine();
         this.setup = setup;
-        this.engineConfig = setup.vsEngine() ? engine : null;
+        this.engineConfig = engine;
         this.engineGone = false;
         this.engineReady = false;
         this.thinking = false;
         this.forcedOutcome = null;
         this.forcedReason = "";
-        this.game = new Game();
+        this.game = newGame;
         this.clock = null;
         if (engineConfig != null && setup.timeControl() instanceof TimeControl.Clock c) {
             clock = new GameClock(c.baseMillis(), c.incrementMillis(), nanoTime);
         }
-        view.positionChanged();
+        afterMove();
         if (engineConfig == null) {
             view.engineStatus("");
             return;
@@ -325,6 +342,43 @@ public final class PlayController implements AutoCloseable {
         view.engineStatus("");
         view.problem(message);
         view.positionChanged();
+    }
+
+    /** The side that would resign: the person's side against an engine, otherwise the side to move. */
+    private Side resigningSide() {
+        return usesEngine() ? setup.humanSide() : game.position().sideToMove();
+    }
+
+    public boolean canResign() {
+        return !isOver() && (!usesEngine() || engineReady);
+    }
+
+    /** The person (or, between two people, the side to move) resigns and the other side wins. */
+    public void resign() {
+        if (!canResign()) {
+            return;
+        }
+        Side loser = resigningSide();
+        finish(loser == Side.X ? Outcome.O_WINS : Outcome.X_WINS, (loser == Side.X ? "x" : "o") + " resigned");
+    }
+
+    /** Draws by agreement are only possible between two people: an engine cannot be offered a draw over UAI. */
+    public boolean canAgreeDraw() {
+        return !isOver() && !usesEngine();
+    }
+
+    public void agreeDraw() {
+        if (canAgreeDraw()) {
+            finish(Outcome.DRAW, "draw agreed");
+        }
+    }
+
+    /** The engine's name (as it gave it, or as configured while it starts), or null in a game between two people. */
+    public String opponentName() {
+        if (!usesEngine()) {
+            return null;
+        }
+        return session != null ? session.engineName() : engineConfig.name();
     }
 
     /** Called regularly (a few times a second) to notice a fallen flag. */

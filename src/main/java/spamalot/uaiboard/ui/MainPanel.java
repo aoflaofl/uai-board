@@ -6,7 +6,10 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -16,6 +19,7 @@ import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import spamalot.uaiboard.game.Game;
+import spamalot.uaiboard.game.GameRecord;
 import spamalot.uaiboard.game.Outcome;
 import spamalot.uaiboard.game.Position;
 import spamalot.uaiboard.game.Side;
@@ -47,6 +51,8 @@ public final class MainPanel extends JPanel implements PlayController.View {
     private final java.util.ArrayDeque<String> consoleLines = new java.util.ArrayDeque<>();
     private String engineStatus = "";
     private String gameOverReason = "";
+    private boolean flipped;
+    private Consumer<Boolean> flipListener = f -> { };
 
     public MainPanel(Path settingsFile) {
         super(new BorderLayout());
@@ -90,20 +96,134 @@ public final class MainPanel extends JPanel implements PlayController.View {
 
     // ---- actions for the menu ----
 
-    /** Asks for the next game's opponent, side and time control, and starts it. */
+    /** Asks for the next game's opponent, side, time control and start position, and starts it. */
     public void newGame() {
-        Settings chosen = NewGameDialog.show(this, settings);
+        NewGameDialog.Result chosen = NewGameDialog.show(this, settings);
         if (chosen == null) {
             return;
         }
-        settings = chosen;
+        settings = chosen.settings();
         saveSettings();
-        EngineConfig engine = settings.lastSetup().vsEngine() ? settings.engine(settings.lastSetup().engineName()) : null;
+        GameSetup setup = settings.lastSetup();
+        EngineConfig engine = setup.vsEngine() ? settings.engine(setup.engineName()) : null;
+        resetDisplay();
+        // Seen from the person's side: when they play o against an engine the board is turned around.
+        setFlipped(engine != null && setup.humanSide() == Side.O);
+        controller.startGame(setup, engine, chosen.start());
+    }
+
+    private void resetDisplay() {
         analysis.clear();
         analysis.setEngine("");
         engineStatus = "";
         gameOverReason = "";
-        controller.startGame(settings.lastSetup(), engine);
+    }
+
+    /** Shows the board from the other side. */
+    public void setFlipped(boolean flipped) {
+        this.flipped = flipped;
+        board.setFlipped(flipped);
+        flipListener.accept(flipped);
+    }
+
+    public boolean isFlipped() {
+        return flipped;
+    }
+
+    /** Told whenever the board is flipped (so a menu check box can follow). */
+    public void setFlipListener(Consumer<Boolean> listener) {
+        this.flipListener = listener;
+    }
+
+    public boolean canResign() {
+        return controller.canResign();
+    }
+
+    public boolean canAgreeDraw() {
+        return controller.canAgreeDraw();
+    }
+
+    public void resign() {
+        if (controller.canResign() && JOptionPane.showConfirmDialog(this, "Resign the game?", "Resign",
+                JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
+            controller.resign();
+        }
+    }
+
+    public void agreeDraw() {
+        if (controller.canAgreeDraw() && JOptionPane.showConfirmDialog(this, "Do both players agree to a draw?",
+                "Draw by agreement", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
+            controller.agreeDraw();
+        }
+    }
+
+    /** The game as text, with the names of the players and today's date. */
+    String gameText() {
+        GameSetup setup = controller.setup();
+        String opponent = controller.opponentName();
+        String person = System.getProperty("user.name", "Player");
+        String xName = opponent == null ? "x" : setup.humanSide() == Side.X ? person : opponent;
+        String oName = opponent == null ? "o" : setup.humanSide() == Side.O ? person : opponent;
+        return GameRecord.of(controller.game(), xName, oName, GameRecord.resultTag(controller.outcome()), LocalDate.now())
+                .toText();
+    }
+
+    /** Writes the game to {@code file}; returns an error message, or null on success. */
+    String saveTo(Path file) {
+        try {
+            Files.writeString(file, gameText());
+            return null;
+        } catch (IOException e) {
+            return "Could not save the game: " + e.getMessage();
+        }
+    }
+
+    /** Reads a game from {@code file} and continues it as a game between two people; returns an error message, or null. */
+    String loadFrom(Path file) {
+        GameRecord record;
+        try {
+            record = GameRecord.parse(Files.readString(file));
+        } catch (IOException | RuntimeException e) {
+            return "Could not load the game: " + e.getMessage();
+        }
+        resetDisplay();
+        setFlipped(false);
+        controller.loadGame(record.toGame());
+        return null;
+    }
+
+    /** Asks for a file and saves the game there. */
+    public void saveGame() {
+        javax.swing.JFileChooser chooser = gameChooser();
+        chooser.setSelectedFile(new java.io.File("game-" + LocalDate.now() + ".ataxx"));
+        if (chooser.showSaveDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+            java.io.File f = chooser.getSelectedFile();
+            if (f.exists() && JOptionPane.showConfirmDialog(this, f.getName() + " exists. Replace it?", "Save game",
+                    JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) {
+                return;
+            }
+            String problem = saveTo(f.toPath());
+            if (problem != null) {
+                JOptionPane.showMessageDialog(this, problem, "Save game", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    /** Asks for a file and loads the game in it. */
+    public void loadGame() {
+        javax.swing.JFileChooser chooser = gameChooser();
+        if (chooser.showOpenDialog(this) == javax.swing.JFileChooser.APPROVE_OPTION) {
+            String problem = loadFrom(chooser.getSelectedFile().toPath());
+            if (problem != null) {
+                JOptionPane.showMessageDialog(this, problem, "Load game", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    private static javax.swing.JFileChooser gameChooser() {
+        javax.swing.JFileChooser chooser = new javax.swing.JFileChooser();
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Ataxx games (*.ataxx)", "ataxx"));
+        return chooser;
     }
 
     public void undo() {

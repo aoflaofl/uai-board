@@ -39,6 +39,7 @@ public final class BoardPanel extends JPanel {
     private Position position;
     private Move lastMove;
     private boolean inputEnabled = true;
+    private boolean flipped;
     private Consumer<Move> moveListener = m -> { };
 
     public BoardPanel(Position position) {
@@ -99,8 +100,18 @@ public final class BoardPanel extends JPanel {
         repaint();
     }
 
+    /** Shows the board from the other side (rank 1 at the top). */
+    public void setFlipped(boolean flipped) {
+        this.flipped = flipped;
+        repaint();
+    }
+
+    public boolean isFlipped() {
+        return flipped;
+    }
+
     private BoardGeometry geometry() {
-        return new BoardGeometry(getWidth(), getHeight(), MARGIN);
+        return new BoardGeometry(getWidth(), getHeight(), MARGIN, flipped);
     }
 
     private void updateCursor(int square) {
@@ -199,13 +210,15 @@ public final class BoardPanel extends JPanel {
         g.setColor(Color.DARK_GRAY);
         g.setFont(getFont().deriveFont(Font.BOLD, Math.max(10f, geo.cellSize() / 5f)));
         FontMetrics fm = g.getFontMetrics();
+        int bottomRank = flipped ? Squares.SIZE - 1 : 0;
+        int leftFile = flipped ? Squares.SIZE - 1 : 0;
         for (int file = 0; file < Squares.SIZE; file++) {
-            Rectangle r = geo.bounds(Squares.of(file, 0));
+            Rectangle r = geo.bounds(Squares.of(file, bottomRank));
             String s = String.valueOf((char) ('a' + file));
             g.drawString(s, r.x + (r.width - fm.stringWidth(s)) / 2, r.y + r.height + fm.getAscent() + 2);
         }
         for (int rank = 0; rank < Squares.SIZE; rank++) {
-            Rectangle r = geo.bounds(Squares.of(0, rank));
+            Rectangle r = geo.bounds(Squares.of(leftFile, rank));
             String s = String.valueOf(rank + 1);
             g.drawString(s, r.x - fm.stringWidth(s) - 6, r.y + (r.height + fm.getAscent()) / 2 - 2);
         }

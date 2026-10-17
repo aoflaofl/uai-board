@@ -231,4 +231,72 @@ class PlayControllerTest {
         assertEquals(1, get(() -> controller.game().moves().size()));
         assertTrue(problems.isEmpty(), problems.toString());
     }
+
+    @Test
+    void aPersonCanResignAgainstTheEngine() throws Exception {
+        run(() -> controller.startGame(vsFake(Side.X), FakeEngines.config("normal")));
+        await(controller::inputAllowed);
+        assertTrue(get(controller::canResign));
+        assertFalse(get(controller::canAgreeDraw)); // not against an engine
+        run(controller::resign);
+        assertEquals(List.of(Outcome.O_WINS), gameOvers);
+        assertEquals("x resigned", gameOverReasons.get(0));
+        assertTrue(get(controller::isOver));
+        assertFalse(get(controller::canResign));
+        assertEquals("FakeEngine 1.0", get(controller::opponentName));
+    }
+
+    @Test
+    void betweenTwoPeopleTheSideToMoveResignsOrBothAgreeToADraw() throws Exception {
+        GameSetup hotSeat = new GameSetup(null, Side.X, GameSetup.DEFAULT.timeControl());
+        run(() -> controller.startGame(hotSeat, null));
+        assertTrue(get(controller::canAgreeDraw));
+        run(() -> controller.humanMove(Move.parse("b6")));
+        run(controller::resign); // o is to move
+        assertEquals(List.of(Outcome.X_WINS), gameOvers);
+        assertEquals("o resigned", gameOverReasons.get(0));
+
+        run(() -> controller.startGame(hotSeat, null));
+        run(controller::agreeDraw);
+        assertEquals(Outcome.DRAW, gameOvers.get(1));
+        assertEquals("draw agreed", gameOverReasons.get(1));
+        assertEquals(null, get(controller::opponentName));
+    }
+
+    @Test
+    void aLoadedGameCanBePlayedOn() throws Exception {
+        spamalot.uaiboard.game.Game g = new spamalot.uaiboard.game.Game();
+        g.play(Move.parse("b6"));
+        g.play(Move.parse("b2"));
+        run(() -> controller.startGame(vsFake(Side.X), FakeEngines.config("normal")));
+        run(() -> controller.loadGame(g));
+        assertEquals(2, get(() -> controller.game().moves().size()));
+        assertTrue(get(controller::inputAllowed)); // hot seat, x to move
+        run(() -> controller.humanMove(Move.parse("a7c5")));
+        assertEquals(3, get(() -> controller.game().moves().size()));
+        run(controller::undo);
+        run(controller::undo);
+        assertEquals(1, get(() -> controller.game().moves().size()));
+    }
+
+    @Test
+    void aGameCanStartFromAnyPosition() throws Exception {
+        // o to move and the person is x: the engine moves first.
+        spamalot.uaiboard.game.Position start = spamalot.uaiboard.game.Position.fromFen("x5o/7/7/7/7/7/o5x o 0 5");
+        run(() -> controller.startGame(vsFake(Side.X), FakeEngines.config("normal"), start));
+        await(() -> controller.game().moves().size() == 1);
+        await(controller::inputAllowed);
+        assertEquals(start, get(() -> controller.game().start()));
+    }
+
+    @Test
+    void aStuckSideToMovePassesAtTheStart() throws Exception {
+        // o is boxed in and to move: the game starts with a pass, and it is x's turn.
+        spamalot.uaiboard.game.Position start =
+                spamalot.uaiboard.game.Position.fromFen("7/7/7/7/---4/--x4/o-x4 o 0 1");
+        run(() -> controller.startGame(new GameSetup(null, Side.X, GameSetup.DEFAULT.timeControl()), null, start));
+        assertEquals(List.of(Move.pass()), get(() -> controller.game().moves()));
+        assertEquals(Side.X, get(() -> controller.game().position().sideToMove()));
+        assertTrue(get(controller::inputAllowed));
+    }
 }

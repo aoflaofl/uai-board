@@ -5,11 +5,14 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import javax.swing.JFrame;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.KeyStroke;
+import javax.swing.event.MenuEvent;
+import javax.swing.event.MenuListener;
 import spamalot.uaiboard.play.Settings;
 
 /** The application window: a menu bar around a {@link MainPanel}. */
@@ -46,6 +49,30 @@ public final class MainFrame extends JFrame {
         JMenuItem undo = new JMenuItem("Undo");
         undo.setAccelerator(shortcut(KeyEvent.VK_Z));
         undo.addActionListener(e -> panel.undo());
+        JMenuItem save = new JMenuItem("Save Game…");
+        save.setAccelerator(shortcut(KeyEvent.VK_S));
+        save.addActionListener(e -> panel.saveGame());
+        JMenuItem load = new JMenuItem("Load Game…");
+        load.setAccelerator(shortcut(KeyEvent.VK_O));
+        load.addActionListener(e -> panel.loadGame());
+        JMenuItem resign = new JMenuItem("Resign…");
+        resign.addActionListener(e -> panel.resign());
+        JMenuItem draw = new JMenuItem("Draw by Agreement…");
+        draw.addActionListener(e -> panel.agreeDraw());
+        // Resigning and drawing only make sense while a game is on (and a draw only between two people).
+        game.addMenuListener(new MenuListener() {
+            @Override
+            public void menuSelected(MenuEvent e) {
+                resign.setEnabled(panel.canResign());
+                draw.setEnabled(panel.canAgreeDraw());
+            }
+
+            @Override
+            public void menuDeselected(MenuEvent e) { }
+
+            @Override
+            public void menuCanceled(MenuEvent e) { }
+        });
         JMenuItem quit = new JMenuItem("Quit");
         quit.setAccelerator(shortcut(KeyEvent.VK_Q));
         quit.addActionListener(e -> {
@@ -56,7 +83,21 @@ public final class MainFrame extends JFrame {
         game.add(newGame);
         game.add(undo);
         game.addSeparator();
+        game.add(save);
+        game.add(load);
+        game.addSeparator();
+        game.add(resign);
+        game.add(draw);
+        game.addSeparator();
         game.add(quit);
+
+        JMenu view = new JMenu("View");
+        view.setMnemonic(KeyEvent.VK_V);
+        JCheckBoxMenuItem flip = new JCheckBoxMenuItem("Flip Board");
+        flip.setAccelerator(shortcut(KeyEvent.VK_F));
+        flip.addActionListener(e -> panel.setFlipped(flip.isSelected()));
+        panel.setFlipListener(flip::setSelected);
+        view.add(flip);
 
         JMenu engine = new JMenu("Engine");
         engine.setMnemonic(KeyEvent.VK_E);
@@ -75,6 +116,7 @@ public final class MainFrame extends JFrame {
         help.add(about);
 
         bar.add(game);
+        bar.add(view);
         bar.add(engine);
         bar.add(help);
         return bar;

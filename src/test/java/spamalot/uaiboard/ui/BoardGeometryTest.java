@@ -42,4 +42,21 @@ class BoardGeometryTest {
         BoardGeometry geo = new BoardGeometry(10, 10, 24);
         assertEquals(1, geo.cellSize());
     }
+
+    @Test
+    void aFlippedBoardIsTurnedHalfACircle() {
+        BoardGeometry geo = new BoardGeometry(600, 500, 24, true);
+        for (int sq = 0; sq < Squares.COUNT; sq++) {
+            Rectangle r = geo.bounds(sq);
+            assertEquals(sq, geo.squareAt(r.x + r.width / 2, r.y + r.height / 2));
+        }
+        BoardGeometry normal = new BoardGeometry(600, 500, 24);
+        Rectangle a1 = geo.bounds(Squares.parse("a1"));
+        Rectangle g7 = geo.bounds(Squares.parse("g7"));
+        assertEquals(true, a1.y < g7.y && a1.x > g7.x); // a1 is at the top right, g7 at the bottom left
+        // Each square sits where the opposite square sits on the normal board.
+        for (int sq = 0; sq < Squares.COUNT; sq++) {
+            assertEquals(normal.bounds(Squares.COUNT - 1 - sq), geo.bounds(sq));
+        }
+    }
 }

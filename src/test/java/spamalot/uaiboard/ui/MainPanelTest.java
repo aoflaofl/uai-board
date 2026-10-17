@@ -46,4 +46,65 @@ class MainPanelTest {
         });
         SwingUtilities.invokeAndWait(panel::close);
     }
+
+    private MainPanel newPanel() throws Exception {
+        MainPanel[] holder = new MainPanel[1];
+        SwingUtilities.invokeAndWait(() -> holder[0] = new MainPanel(dir.resolve("s.properties")));
+        return holder[0];
+    }
+
+    @Test
+    void savesAndLoadsAGame() throws Exception {
+        MainPanel panel = newPanel();
+        Path file = dir.resolve("g.ataxx");
+        SwingUtilities.invokeAndWait(() -> {
+            panel.controller().humanMove(Move.parse("b6"));
+            panel.controller().humanMove(Move.parse("b2"));
+            panel.controller().humanMove(Move.parse("a7c5"));
+            assertEquals(null, panel.saveTo(file));
+        });
+        String text = java.nio.file.Files.readString(file);
+        assertTrue(text.contains("1. b6 b2 2. a7c5"), text);
+        assertTrue(text.contains("[Result \"*\"]"), text);
+
+        MainPanel other = newPanel();
+        SwingUtilities.invokeAndWait(() -> {
+            assertEquals(null, other.loadFrom(file));
+            assertEquals(3, other.controller().game().moves().size());
+            assertEquals(panel.controller().game().position(), other.controller().game().position());
+        });
+        SwingUtilities.invokeAndWait(panel::close);
+        SwingUtilities.invokeAndWait(other::close);
+    }
+
+    @Test
+    void badFilesGiveAMessageAndLeaveTheGameAlone() throws Exception {
+        MainPanel panel = newPanel();
+        Path bad = dir.resolve("bad.ataxx");
+        java.nio.file.Files.writeString(bad, "1. b6 d4\n");
+        SwingUtilities.invokeAndWait(() -> {
+            panel.controller().humanMove(Move.parse("b6"));
+            String problem = panel.loadFrom(bad);
+            assertTrue(problem.contains("not legal"), problem);
+            assertTrue(panel.loadFrom(dir.resolve("missing.ataxx")).startsWith("Could not load the game"));
+            assertEquals(1, panel.controller().game().moves().size());
+        });
+        SwingUtilities.invokeAndWait(panel::close);
+    }
+
+    @Test
+    void flippingTurnsTheBoardAndTellsTheListener() throws Exception {
+        MainPanel panel = newPanel();
+        boolean[] told = new boolean[1];
+        SwingUtilities.invokeAndWait(() -> {
+            panel.setFlipListener(f -> told[0] = f);
+            panel.setFlipped(true);
+            assertTrue(panel.board().isFlipped());
+            assertTrue(told[0]);
+            assertTrue(panel.isFlipped());
+            panel.setFlipped(false);
+            assertEquals(false, panel.board().isFlipped());
+        });
+        SwingUtilities.invokeAndWait(panel::close);
+    }
 }

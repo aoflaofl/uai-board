@@ -17,8 +17,10 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.JSpinner;
+import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
+import spamalot.uaiboard.game.Position;
 import spamalot.uaiboard.game.Side;
 import spamalot.uaiboard.play.EngineConfig;
 import spamalot.uaiboard.play.GameSetup;
@@ -39,7 +41,12 @@ public final class NewGameDialog extends JDialog {
     private final JSpinner moveSeconds = new JSpinner(new SpinnerNumberModel(1.0, 0.01, 3600.0, 0.5));
     private final JSpinner baseSeconds = new JSpinner(new SpinnerNumberModel(300, 1, 36000, 30));
     private final JSpinner incrementSeconds = new JSpinner(new SpinnerNumberModel(2, 0, 600, 1));
-    private Settings result;
+    private final JTextField fen = new JTextField(30);
+    private final JLabel fenProblem = new JLabel(" ");
+    private Result result;
+
+    /** What the user asked for: the settings to keep, and the position to start from. */
+    public record Result(Settings settings, Position start) { }
 
     private NewGameDialog(Component parent, Settings settings) {
         super(SwingUtilities.getWindowAncestor(parent), "New game", ModalityType.APPLICATION_MODAL);
@@ -120,6 +127,19 @@ public final class NewGameDialog extends JDialog {
         clockRow.add(new JLabel("s per move"));
         form.add(clockRow, c);
 
+        c.gridy = 4;
+        c.gridx = 0;
+        c.gridwidth = 1;
+        form.add(new JLabel("Start position"), c);
+        fen.setToolTipText("A FEN such as x5o/7/7/7/7/7/o5x x 0 1; leave empty for the standard start");
+        c.gridx = 1;
+        c.gridwidth = 2;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        form.add(fen, c);
+        c.gridy = 5;
+        fenProblem.setForeground(new java.awt.Color(0xB00020));
+        form.add(fenProblem, c);
+
         JButton ok = new JButton("Start");
         ok.addActionListener(e -> accept());
         JButton cancel = new JButton("Cancel");
@@ -140,10 +160,10 @@ public final class NewGameDialog extends JDialog {
     }
 
     /**
-     * Shows the dialog. Returns the settings to use (the engine list as edited, and the chosen setup as the last setup), or null
-     * if the user cancelled.
+     * Shows the dialog. Returns the settings to use (the engine list as edited, and the chosen setup as the last setup) and the
+     * start position, or null if the user cancelled.
      */
-    public static Settings show(Component parent, Settings settings) {
+    public static Result show(Component parent, Settings settings) {
         NewGameDialog d = new NewGameDialog(parent, settings);
         d.setVisible(true);
         return d.result;
@@ -177,12 +197,23 @@ public final class NewGameDialog extends JDialog {
     }
 
     private void accept() {
+        Position start = Position.start();
+        String text = fen.getText().strip();
+        if (!text.isEmpty()) {
+            try {
+                start = Position.fromFen(text);
+            } catch (RuntimeException e) {
+                fenProblem.setText("Not a valid FEN: " + e.getMessage());
+                pack();
+                return;
+            }
+        }
         TimeControl tc = clock.isSelected()
                 ? new TimeControl.Clock(((Number) baseSeconds.getValue()).longValue() * 1000,
                         ((Number) incrementSeconds.getValue()).longValue() * 1000)
                 : new TimeControl.MoveTime(Math.max(1, Math.round(((Number) moveSeconds.getValue()).doubleValue() * 1000)));
         String engine = engineChosen() ? (String) opponent.getSelectedItem() : null;
-        result = new Settings(engines, new GameSetup(engine, playO.isSelected() ? Side.O : Side.X, tc));
+        result = new Result(new Settings(engines, new GameSetup(engine, playO.isSelected() ? Side.O : Side.X, tc)), start);
         dispose();
     }
 }
