@@ -18,6 +18,16 @@ Also: **Game > Save Game / Load Game** keep a game as a small text file (`.ataxx
 
 Not there yet: a clock between two people.
 
+## Engines it has been checked with
+
+[gataxx](https://github.com/aoflaofl/gataxx) 1.9.0, [TikTaxx](https://github.com/kz04px/tiktaxx) (`95dffff`), [Funes](https://github.com/Tempate/Funes) (`dd319f1`) and [Moonbird](https://github.com/tsoj/Moonbird) (`d6a6107`): handshake and options, playing against each of them, analysis mode, and matches of gataxx against each of the other three (20 games at 0.1 s per move, plus 10 games on a 3 s + 0.05 s clock against Funes). Every game ended by the rules, with no forfeit, and average move times stayed within 85-97 ms at a 100 ms limit.
+
+Differences between engines the program copes with:
+
+- **`stop` during an infinite search.** gataxx and TikTaxx answer it with a `bestmove` at once. Funes and Moonbird keep searching and never answer, so analysis mode waits 0.4 s, restarts the engine process, and from then on restarts it immediately for each new position (about 0.05-0.13 s).
+- **Options.** Funes announces none; the others announce 4 to 60. Options are only set from the engine list or the match setup.
+- **Names.** The name shown is the one the engine gives in its handshake (`Tiktaxx`, `Funes`, `Moonbird d6a6107`, `gataxx 1.9.0`).
+
 ## Build and run
 
 ```
@@ -36,7 +46,7 @@ java -jar target/uai-board.jar
 
 1. ~~A UAI client~~ (done, `uai`).
 2. ~~Play against an engine, with analysis and clocks~~ (done, `play` and `ui`).
-3. Engine against engine, with a match record. In progress: the Elo statistics, the opening generator and file reader, the single-game driver between two engines (`match.GameDriver`: clocks or a fixed move time, forfeits for illegal moves, timeouts and crashes, automatic passes, cancellation), the match controller (`match.MatchController`: a series of games on its own thread with colours swapped over each opening, pause, stop, engines restarted after a failure, running score and Elo), multi-game game files (`GameRecord`) and the match window (`ui.MatchPanel`) are done; saving a match and reviewing its games (`match.MatchReport`) is done too; what is left is checking more real engines.
+3. Engine against engine, with a match record. In progress: the Elo statistics, the opening generator and file reader, the single-game driver between two engines (`match.GameDriver`: clocks or a fixed move time, forfeits for illegal moves, timeouts and crashes, automatic passes, cancellation), the match controller (`match.MatchController`: a series of games on its own thread with colours swapped over each opening, pause, stop, engines restarted after a failure, running score and Elo), multi-game game files (`GameRecord`) and the match window (`ui.MatchPanel`) are done; saving a match and reviewing its games (`match.MatchReport`) is done too; real-engine checks are done too (see above).
 4. ~~Load and save games, flip the board, resign and draw, start from a FEN~~ (done).
 5. ~~Analysis mode~~ (done).
 
