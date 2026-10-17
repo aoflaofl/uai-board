@@ -13,26 +13,34 @@ import java.util.Properties;
 import spamalot.uaiboard.game.Side;
 
 /** The engines the user has set up and the last game setup, kept in a properties file. */
-public record Settings(List<EngineConfig> engines, GameSetup lastSetup, String analysisEngine) {
+public record Settings(List<EngineConfig> engines, GameSetup lastSetup, String analysisEngine, MatchPrefs matchPrefs) {
     public Settings {
         engines = List.copyOf(engines);
     }
 
-    /** Settings without an analysis engine chosen. */
+    /** Settings without an analysis engine chosen and with the default match setup. */
     public Settings(List<EngineConfig> engines, GameSetup lastSetup) {
-        this(engines, lastSetup, null);
+        this(engines, lastSetup, null, MatchPrefs.DEFAULT);
+    }
+
+    public Settings(List<EngineConfig> engines, GameSetup lastSetup, String analysisEngine) {
+        this(engines, lastSetup, analysisEngine, MatchPrefs.DEFAULT);
     }
 
     public Settings withAnalysisEngine(String name) {
-        return new Settings(engines, lastSetup, name);
+        return new Settings(engines, lastSetup, name, matchPrefs);
     }
 
     public Settings withEngines(List<EngineConfig> newEngines) {
-        return new Settings(newEngines, lastSetup, analysisEngine);
+        return new Settings(newEngines, lastSetup, analysisEngine, matchPrefs);
     }
 
     public Settings withLastSetup(GameSetup setup) {
-        return new Settings(engines, setup, analysisEngine);
+        return new Settings(engines, setup, analysisEngine, matchPrefs);
+    }
+
+    public Settings withMatchPrefs(MatchPrefs prefs) {
+        return new Settings(engines, lastSetup, analysisEngine, prefs);
     }
 
     public static Settings empty() {
@@ -79,7 +87,28 @@ public record Settings(List<EngineConfig> engines, GameSetup lastSetup, String a
         Side side = "o".equals(p.getProperty("last.side")) ? Side.O : Side.X;
         TimeControl tc = TimeControl.parse(p.getProperty("last.timeControl", ""), GameSetup.DEFAULT.timeControl());
         String analysis = p.getProperty("analysis.engine");
-        return new Settings(engines, new GameSetup(engineName, side, tc), analysis == null || analysis.isEmpty() ? null : analysis);
+        MatchPrefs d = MatchPrefs.DEFAULT;
+        MatchPrefs match = new MatchPrefs(blankToNull(p.getProperty("match.engineA")), blankToNull(p.getProperty("match.engineB")),
+                TimeControl.parse(p.getProperty("match.timeControl", ""), d.timeControl()),
+                integer(p, "match.games", d.games(), 1, 1_000_000), integer(p, "match.plies", d.plies(), 0, 100),
+                (long) integer(p, "match.seed", (int) d.seed(), Integer.MIN_VALUE, Integer.MAX_VALUE),
+                integer(p, "match.grace", (int) d.graceMs(), 0, 600_000), p.getProperty("match.extraA", "").replace("\\n", "\n"),
+                p.getProperty("match.extraB", "").replace("\\n", "\n"), p.getProperty("match.openingFile", ""));
+        return new Settings(engines, new GameSetup(engineName, side, tc), analysis == null || analysis.isEmpty() ? null : analysis,
+                match);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isEmpty() ? null : s;
+    }
+
+    private static int integer(Properties p, String key, int fallback, int min, int max) {
+        try {
+            int v = Integer.parseInt(p.getProperty(key, "").trim());
+            return v < min || v > max ? fallback : v;
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     /** Options are stored as {@code <position>|<value>} so that their order survives the (unordered) properties file. */
@@ -118,6 +147,16 @@ public record Settings(List<EngineConfig> engines, GameSetup lastSetup, String a
         p.setProperty("last.side", lastSetup.humanSide() == Side.O ? "o" : "x");
         p.setProperty("last.timeControl", lastSetup.timeControl().format());
         p.setProperty("analysis.engine", analysisEngine == null ? "" : analysisEngine);
+        p.setProperty("match.engineA", matchPrefs.engineA() == null ? "" : matchPrefs.engineA());
+        p.setProperty("match.engineB", matchPrefs.engineB() == null ? "" : matchPrefs.engineB());
+        p.setProperty("match.timeControl", matchPrefs.timeControl().format());
+        p.setProperty("match.games", String.valueOf(matchPrefs.games()));
+        p.setProperty("match.plies", String.valueOf(matchPrefs.plies()));
+        p.setProperty("match.seed", String.valueOf(matchPrefs.seed()));
+        p.setProperty("match.grace", String.valueOf(matchPrefs.graceMs()));
+        p.setProperty("match.extraA", matchPrefs.extraA().replace("\r", "").replace("\n", "\\n"));
+        p.setProperty("match.extraB", matchPrefs.extraB().replace("\r", "").replace("\n", "\\n"));
+        p.setProperty("match.openingFile", matchPrefs.openingFile());
         Path dir = file.toAbsolutePath().getParent();
         if (dir != null) {
             Files.createDirectories(dir);

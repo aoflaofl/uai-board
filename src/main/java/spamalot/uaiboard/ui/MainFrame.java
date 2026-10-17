@@ -141,6 +141,10 @@ public final class MainFrame extends JFrame {
         engine.add(analyse);
         engine.add(analysisEngine);
         engine.addSeparator();
+        JMenuItem match = new JMenuItem("Engine Match…");
+        match.addActionListener(e -> panel.openMatch());
+        engine.add(match);
+        engine.addSeparator();
         engine.add(engines);
         engine.add(console);
 

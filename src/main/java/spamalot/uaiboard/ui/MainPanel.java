@@ -53,6 +53,7 @@ public final class MainPanel extends JPanel implements PlayController.View {
     private final PlayController controller;
     private final Timer timer;
     private EngineLogFrame console;
+    private MatchFrame matchFrame;
     private final java.util.ArrayDeque<String> consoleLines = new java.util.ArrayDeque<>();
     private String engineStatus = "";
     private String gameOverReason = "";
@@ -340,7 +341,26 @@ public final class MainPanel extends JPanel implements PlayController.View {
         if (edited != null) {
             settings = settings.withEngines(edited);
             saveSettings();
+            if (matchFrame != null && matchFrame.isDisplayable()) {
+                matchFrame.setEngines(edited);
+            }
         }
+    }
+
+    /** Opens the engine match window (or brings it to the front if it is open). */
+    public void openMatch() {
+        if (matchFrame != null && matchFrame.isDisplayable()) {
+            matchFrame.toFront();
+            return;
+        }
+        matchFrame = new MatchFrame(this, settings.engines(), settings.matchPrefs(), prefs -> {
+            settings = settings.withMatchPrefs(prefs);
+            saveSettings();
+        }, edited -> {
+            settings = settings.withEngines(edited);
+            saveSettings();
+        });
+        matchFrame.setVisible(true);
     }
 
     public void showConsole() {
@@ -369,6 +389,9 @@ public final class MainPanel extends JPanel implements PlayController.View {
         timer.stop();
         analyser.close();
         controller.close();
+        if (matchFrame != null) {
+            matchFrame.shutDown();
+        }
         if (console != null) {
             console.dispose();
         }

@@ -16,9 +16,7 @@ import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JRadioButton;
-import javax.swing.JSpinner;
 import javax.swing.JTextField;
-import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
 import spamalot.uaiboard.game.Position;
 import spamalot.uaiboard.game.Side;
@@ -37,11 +35,7 @@ public final class NewGameDialog extends JDialog {
     private final JComboBox<String> opponent = new JComboBox<>();
     private final JRadioButton playX = new JRadioButton("x (moves first)");
     private final JRadioButton playO = new JRadioButton("o");
-    private final JRadioButton perMove = new JRadioButton("Fixed time per move");
-    private final JRadioButton clock = new JRadioButton("Game clock");
-    private final JSpinner moveSeconds = new JSpinner(new SpinnerNumberModel(1.0, 0.01, 3600.0, 0.5));
-    private final JSpinner baseSeconds = new JSpinner(new SpinnerNumberModel(300, 1, 36000, 30));
-    private final JSpinner incrementSeconds = new JSpinner(new SpinnerNumberModel(2, 0, 600, 1));
+    private final TimeControlPanel timeControl;
     private final JTextField fen = new JTextField(30);
     private final JLabel fenProblem = new JLabel(" ");
     private Result result;
@@ -60,21 +54,8 @@ public final class NewGameDialog extends JDialog {
         side.add(playX);
         side.add(playO);
         (settings.lastSetup().humanSide() == Side.X ? playX : playO).setSelected(true);
-        ButtonGroup tc = new ButtonGroup();
-        tc.add(perMove);
-        tc.add(clock);
-        TimeControl last = settings.lastSetup().timeControl();
-        if (last instanceof TimeControl.Clock c) {
-            clock.setSelected(true);
-            baseSeconds.setValue((int) (c.baseMillis() / 1000));
-            incrementSeconds.setValue((int) (c.incrementMillis() / 1000));
-        } else {
-            perMove.setSelected(true);
-            moveSeconds.setValue(((TimeControl.MoveTime) last).millis() / 1000.0);
-        }
+        timeControl = new TimeControlPanel(settings.lastSetup().timeControl());
         opponent.addActionListener(e -> enableControls());
-        perMove.addActionListener(e -> enableControls());
-        clock.addActionListener(e -> enableControls());
 
         JButton manage = new JButton("Engines…");
         manage.addActionListener(e -> {
@@ -113,23 +94,10 @@ public final class NewGameDialog extends JDialog {
         c.gridx = 0;
         c.gridwidth = 1;
         form.add(new JLabel("Engine time"), c);
-        JPanel moveRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        moveRow.add(perMove);
-        moveRow.add(moveSeconds);
-        moveRow.add(new JLabel("seconds"));
         c.gridx = 1;
         c.gridwidth = 2;
-        form.add(moveRow, c);
+        form.add(timeControl, c);
         c.gridy = 3;
-        JPanel clockRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        clockRow.add(clock);
-        clockRow.add(baseSeconds);
-        clockRow.add(new JLabel("s + "));
-        clockRow.add(incrementSeconds);
-        clockRow.add(new JLabel("s per move"));
-        form.add(clockRow, c);
-
-        c.gridy = 4;
         c.gridx = 0;
         c.gridwidth = 1;
         form.add(new JLabel("Start position"), c);
@@ -138,7 +106,7 @@ public final class NewGameDialog extends JDialog {
         c.gridwidth = 2;
         c.fill = GridBagConstraints.HORIZONTAL;
         form.add(fen, c);
-        c.gridy = 5;
+        c.gridy = 4;
         fenProblem.setForeground(new java.awt.Color(0xB00020));
         form.add(fenProblem, c);
 
@@ -191,11 +159,7 @@ public final class NewGameDialog extends JDialog {
         boolean engine = engineChosen();
         playX.setEnabled(engine);
         playO.setEnabled(engine);
-        perMove.setEnabled(engine);
-        clock.setEnabled(engine);
-        moveSeconds.setEnabled(engine && perMove.isSelected());
-        baseSeconds.setEnabled(engine && clock.isSelected());
-        incrementSeconds.setEnabled(engine && clock.isSelected());
+        timeControl.setEnabled(engine);
     }
 
     private void accept() {
@@ -210,10 +174,7 @@ public final class NewGameDialog extends JDialog {
                 return;
             }
         }
-        TimeControl tc = clock.isSelected()
-                ? new TimeControl.Clock(((Number) baseSeconds.getValue()).longValue() * 1000,
-                        ((Number) incrementSeconds.getValue()).longValue() * 1000)
-                : new TimeControl.MoveTime(Math.max(1, Math.round(((Number) moveSeconds.getValue()).doubleValue() * 1000)));
+        TimeControl tc = timeControl.timeControl();
         String engine = engineChosen() ? (String) opponent.getSelectedItem() : null;
         result = new Result(original.withEngines(engines)
                 .withLastSetup(new GameSetup(engine, playO.isSelected() ? Side.O : Side.X, tc)), start);

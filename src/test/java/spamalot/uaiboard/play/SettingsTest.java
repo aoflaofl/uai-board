@@ -32,6 +32,7 @@ class SettingsTest {
         Settings back = Settings.load(file);
         assertEquals(s, back);
         assertNull(back.analysisEngine());
+        assertEquals(MatchPrefs.DEFAULT, back.matchPrefs());
         Settings withAnalysis = s.withAnalysisEngine("Funes");
         withAnalysis.save(file);
         assertEquals("Funes", Settings.load(file).analysisEngine());
@@ -61,5 +62,26 @@ class SettingsTest {
         assertNull(TimeControl.parse("movetime:-1", null));
         assertNull(TimeControl.parse("whatever", null));
         assertTrue(new GameSetup("x", Side.X, GameSetup.DEFAULT.timeControl()).vsEngine());
+    }
+
+    @Test
+    void matchPrefsRoundTripIncludingMultiLineOptions() throws IOException {
+        MatchPrefs prefs = new MatchPrefs("gataxx", "Funes", new TimeControl.Clock(5000, 100), 200, 8, 77, 1500,
+                "Hash=1\nThreads=2", "", "/home/me/openings.txt");
+        Settings s = Settings.empty().withMatchPrefs(prefs);
+        Path file = dir.resolve("m.properties");
+        s.save(file);
+        assertEquals(prefs, Settings.load(file).matchPrefs());
+    }
+
+    @Test
+    void damagedMatchPrefsFallBackToDefaults() throws IOException {
+        Path bad = dir.resolve("badm.properties");
+        Files.writeString(bad, "match.games=0\nmatch.plies=abc\nmatch.seed=\nmatch.grace=-5\nmatch.timeControl=zzz\n");
+        MatchPrefs p = Settings.load(bad).matchPrefs();
+        assertEquals(MatchPrefs.DEFAULT.games(), p.games());
+        assertEquals(MatchPrefs.DEFAULT.plies(), p.plies());
+        assertEquals(MatchPrefs.DEFAULT.graceMs(), p.graceMs());
+        assertEquals(MatchPrefs.DEFAULT.timeControl(), p.timeControl());
     }
 }
