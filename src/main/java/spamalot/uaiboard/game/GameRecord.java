@@ -49,6 +49,19 @@ public record GameRecord(Map<String, String> tags, Position start, List<Move> mo
         return new GameRecord(tags, game.start(), game.moves());
     }
 
+    /** Like {@link #of(Game, String, String, String, LocalDate)}, with a {@code Termination} tag saying how the game ended. */
+    public static GameRecord of(Game game, String xName, String oName, String result, LocalDate date, String termination) {
+        GameRecord r = of(game, xName, oName, result, date);
+        return termination == null || termination.isEmpty() ? r : r.withTag("Termination", termination);
+    }
+
+    /** This record with the tag {@code name} set to {@code value} (added after the existing tags if it is new). */
+    public GameRecord withTag(String name, String value) {
+        Map<String, String> t = new LinkedHashMap<>(tags);
+        t.put(name, value);
+        return new GameRecord(t, start, moves);
+    }
+
     /** The result tag for an outcome. */
     public static String resultTag(Outcome outcome) {
         return switch (outcome) {
@@ -96,11 +109,83 @@ public record GameRecord(Map<String, String> tags, Position start, List<Move> mo
         return sb.toString();
     }
 
-    /** @throws IllegalArgumentException if the text is not a game, or contains an illegal move */
+    /**
+     * Reads one game.
+     *
+     * @throws IllegalArgumentException if the text is not a game, holds more than one game, or contains an illegal move
+     */
     public static GameRecord parse(String text) {
+        List<GameRecord> all = parseAll(text);
+        if (all.size() != 1) {
+            throw new IllegalArgumentException("the file holds " + all.size() + " games, not one");
+        }
+        return all.get(0);
+    }
+
+    /**
+     * Reads a file of one or more games: a new game starts at a tag line that comes after the moves of the previous one. Lines
+     * starting with {@code #} are comments and are skipped.
+     *
+     * @throws IllegalArgumentException if there is no game, or a game has an illegal move (the message says which game)
+     */
+    public static List<GameRecord> parseAll(String text) {
+        List<GameRecord> games = new ArrayList<>();
+        List<String> block = new ArrayList<>();
+        boolean hasMoves = false;
+        for (String line : text.split("\\R")) {
+            if (line.strip().startsWith("#")) {
+                continue;
+            }
+            boolean tag = TAG.matcher(line).matches();
+            if (tag && hasMoves) {
+                games.add(parseGame(block, games.size() + 1));
+                block.clear();
+                hasMoves = false;
+            }
+            block.add(line);
+            if (!tag && !line.isBlank()) {
+                hasMoves = true;
+            }
+        }
+        if (block.stream().anyMatch(l -> !l.isBlank())) {
+            games.add(parseGame(block, games.size() + 1));
+        }
+        if (games.isEmpty()) {
+            throw new IllegalArgumentException("the file is empty");
+        }
+        return games;
+    }
+
+    /** Several games as one text, separated by blank lines, with optional comment lines (shown as {@code # ...}) at the top. */
+    public static String toText(List<GameRecord> games, List<String> header) {
+        StringBuilder sb = new StringBuilder();
+        for (String h : header) {
+            sb.append("# ").append(h).append('\n');
+        }
+        if (!header.isEmpty()) {
+            sb.append('\n');
+        }
+        for (int i = 0; i < games.size(); i++) {
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append(games.get(i).toText());
+        }
+        return sb.toString();
+    }
+
+    private static GameRecord parseGame(List<String> lines, int number) {
+        try {
+            return parseLines(lines);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("game " + number + ": " + e.getMessage(), e);
+        }
+    }
+
+    private static GameRecord parseLines(List<String> lines) {
         Map<String, String> tags = new LinkedHashMap<>();
         StringBuilder moveText = new StringBuilder();
-        for (String line : text.split("\\R")) {
+        for (String line : lines) {
             Matcher m = TAG.matcher(line);
             if (m.matches()) {
                 tags.put(m.group(1), m.group(2));
@@ -136,9 +221,6 @@ public record GameRecord(Map<String, String> tags, Position start, List<Move> mo
                 p = p.makeMove(move);
                 moves.add(move);
             }
-        }
-        if (tags.isEmpty() && moves.isEmpty() && body.isEmpty()) {
-            throw new IllegalArgumentException("the file is empty");
         }
         return new GameRecord(tags, start, moves);
     }

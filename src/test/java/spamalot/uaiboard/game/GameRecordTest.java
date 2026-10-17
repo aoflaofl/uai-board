@@ -79,4 +79,52 @@ class GameRecordTest {
         assertEquals("1/2-1/2", GameRecord.resultTag(Outcome.DRAW));
         assertEquals("*", GameRecord.resultTag(Outcome.ONGOING));
     }
+
+    private static GameRecord record(String result, String termination, String... moves) {
+        return GameRecord.of(play(Position.start(), moves), "A", "B", result, LocalDate.of(2026, 10, 17), termination);
+    }
+
+    @Test
+    void terminationAndExtraTagsAreWrittenAndRead() {
+        GameRecord r = record("1-0", "time forfeit", "b6", "b2").withTag("Round", "3");
+        String text = r.toText();
+        assertTrue(text.contains("[Termination \"time forfeit\"]"), text);
+        assertTrue(text.contains("[Round \"3\"]"), text);
+        GameRecord back = GameRecord.parse(text);
+        assertEquals("time forfeit", back.tag("Termination"));
+        assertEquals("3", back.tag("Round"));
+        assertEquals("", record("*", "", "b6").tag("Termination"));
+    }
+
+    @Test
+    void severalGamesRoundTripThroughOneFileWithAHeader() {
+        List<GameRecord> games = List.of(record("1-0", "game over", "b6", "b2"), record("0-1", "illegal move", "f1"),
+                record("1/2-1/2", "", "b6", "b2", "a7c5"));
+        String text = GameRecord.toText(games, List.of("Match: A vs B", "2026-10-17"));
+        assertTrue(text.startsWith("# Match: A vs B\n# 2026-10-17\n\n[Event"), text);
+        List<GameRecord> back = GameRecord.parseAll(text);
+        assertEquals(3, back.size());
+        for (int i = 0; i < 3; i++) {
+            assertEquals(games.get(i).moves(), back.get(i).moves());
+            assertEquals(games.get(i).tag("Result"), back.get(i).tag("Result"));
+        }
+        assertEquals("illegal move", back.get(1).tag("Termination"));
+    }
+
+    @Test
+    void commentsAreSkippedAndASingleGameParseRejectsSeveral() {
+        assertEquals(2, GameRecord.parse("# note\n[Result \"*\"]\n\n1. b6 b2\n# another note\n").moves().size());
+        String two = record("1-0", "", "b6").toText() + "\n" + record("0-1", "", "f1").toText();
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> GameRecord.parse(two)).getMessage()
+                .contains("holds 2 games"));
+        assertEquals(2, GameRecord.parseAll(two).size());
+    }
+
+    @Test
+    void anIllegalMoveNamesTheGameItIsIn() {
+        String text = record("1-0", "", "b6").toText() + "\n[Event \"x\"]\n\n1. b6 d4\n";
+        String message = assertThrows(IllegalArgumentException.class, () -> GameRecord.parseAll(text)).getMessage();
+        assertTrue(message.contains("game 2") && message.contains("not legal"), message);
+        assertThrows(IllegalArgumentException.class, () -> GameRecord.parseAll("# only a comment\n\n"));
+    }
 }
