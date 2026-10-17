@@ -131,6 +131,19 @@ public final class EngineSession implements AutoCloseable {
         }
     }
 
+    /**
+     * Tells the engine a new game begins and waits until it is ready. Blocks, so call it from a worker thread, and only while no
+     * search is running.
+     *
+     * @throws UaiException if a search is still running or the engine does not answer
+     */
+    public void newGame() throws UaiException {
+        if (isSearching()) {
+            throw new UaiException("the engine is still searching");
+        }
+        client.newGame();
+    }
+
     /** True while a search is running or being stopped. */
     public synchronized boolean isSearching() {
         return state != State.IDLE;

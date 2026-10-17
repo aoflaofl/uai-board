@@ -34,7 +34,7 @@ java -jar target/uai-board.jar
 
 1. ~~A UAI client~~ (done, `uai`).
 2. ~~Play against an engine, with analysis and clocks~~ (done, `play` and `ui`).
-3. Engine against engine, with a match record. In progress: the Elo statistics, the opening generator and file reader (`match`) and multi-game game files (`GameRecord`) are done; next the game driver, the match controller and the match window.
+3. Engine against engine, with a match record. In progress: the Elo statistics, the opening generator and file reader, the single-game driver between two engines (`match.GameDriver`: clocks or a fixed move time, forfeits for illegal moves, timeouts and crashes, automatic passes, cancellation) and multi-game game files (`GameRecord`) are done; next the match controller and the match window.
 4. ~~Load and save games, flip the board, resign and draw, start from a FEN~~ (done).
 5. ~~Analysis mode~~ (done).
 
