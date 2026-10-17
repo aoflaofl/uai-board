@@ -9,7 +9,8 @@ import spamalot.uaiboard.game.Position;
 /**
  * A tiny UAI engine for the client tests: it plays the first legal move. The one argument picks a misbehaviour: {@code silent}
  * never answers {@code uai}; {@code crash} exits on {@code go}; {@code badmove} answers {@code bestmove zz}; {@code slowready}
- * answers {@code isready} only after two seconds.
+ * answers {@code isready} only after two seconds; {@code slow} thinks for 400 ms before every move; {@code illegal} answers
+ * {@code bestmove d4}, which is illegal at the start; {@code mute} never answers {@code go}.
  */
 public final class FakeEngine {
     private FakeEngine() {}
@@ -52,10 +53,16 @@ public final class FakeEngine {
                     Move first = position.legalMoves().get(0);
                     out("info depth 1 score cp 12 nodes 10 time 1 pv " + first);
                     out("info depth 2 nodes 99 nps 5000 hashfull 3 score mate -2 time 2 pv " + first);
+                    if (mode.equals("mute")) {
+                        continue;
+                    }
                     if (line.contains("infinite")) {
                         searching = true;
                     } else {
-                        out(mode.equals("badmove") ? "bestmove zz" : "bestmove " + first);
+                        if (mode.equals("slow")) {
+                            Thread.sleep(400);
+                        }
+                        out(mode.equals("badmove") ? "bestmove zz" : mode.equals("illegal") ? "bestmove d4" : "bestmove " + first);
                     }
                 }
                 case "stop" -> {
