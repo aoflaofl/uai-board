@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
+import spamalot.uaiboard.game.GameRecord;
 import spamalot.uaiboard.play.EngineConfig;
 import spamalot.uaiboard.play.MatchPrefs;
 
@@ -14,10 +15,11 @@ import spamalot.uaiboard.play.MatchPrefs;
 public final class MatchFrame extends JFrame {
     private final MatchPanel panel;
 
-    public MatchFrame(Component owner, List<EngineConfig> engines, MatchPrefs prefs, Consumer<MatchPrefs> savePrefs,
-                      Consumer<List<EngineConfig>> saveEngines) {
+    /** @param review called with a game the user opens from the list (double-click), to be shown in the main window */
+    public MatchFrame(Component owner, List<EngineConfig> engines, MatchPrefs prefs, Consumer<GameRecord> review,
+                      Consumer<MatchPrefs> savePrefs, Consumer<List<EngineConfig>> saveEngines) {
         super("uai-board: engine match");
-        this.panel = new MatchPanel(engines, prefs, savePrefs, saveEngines);
+        this.panel = new MatchPanel(engines, prefs, review, savePrefs, saveEngines);
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
             @Override

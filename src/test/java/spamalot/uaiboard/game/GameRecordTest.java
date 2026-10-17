@@ -127,4 +127,14 @@ class GameRecordTest {
         assertTrue(message.contains("game 2") && message.contains("not legal"), message);
         assertThrows(IllegalArgumentException.class, () -> GameRecord.parseAll("# only a comment\n\n"));
     }
+
+    @Test
+    void gamesWithoutTagsStillReadBackAsSeparateGames() {
+        GameRecord a = GameRecord.parse("1. b6 b2");
+        GameRecord b = GameRecord.parse("1. f1 f6 2. g2");
+        List<GameRecord> back = GameRecord.parseAll(GameRecord.toText(List.of(a, b), List.of()));
+        assertEquals(2, back.size());
+        assertEquals(a.moves(), back.get(0).moves());
+        assertEquals(b.moves(), back.get(1).moves());
+    }
 }

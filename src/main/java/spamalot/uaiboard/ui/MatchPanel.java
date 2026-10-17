@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
+import java.time.LocalDate;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
@@ -46,6 +47,7 @@ import spamalot.uaiboard.game.Position;
 import spamalot.uaiboard.game.Side;
 import spamalot.uaiboard.match.MatchController;
 import spamalot.uaiboard.match.MatchGame;
+import spamalot.uaiboard.match.MatchReport;
 import spamalot.uaiboard.match.MatchSetup;
 import spamalot.uaiboard.match.Openings;
 import spamalot.uaiboard.match.Standings;
@@ -68,6 +70,7 @@ public final class MatchPanel extends JPanel {
     private static final Color IDLE_BACKGROUND = new Color(0xEDEDED);
 
     private List<EngineConfig> engines;
+    private final Consumer<GameRecord> reviewHandler;
     private final Consumer<MatchPrefs> savePrefs;
     private final Consumer<List<EngineConfig>> saveEngines;
 
@@ -91,6 +94,7 @@ public final class MatchPanel extends JPanel {
     private final JButton stop = new JButton("Stop");
     private final JButton editEngines = new JButton("Edit engines…");
     private final JButton console = new JButton("Console");
+    private final JButton saveResults = new JButton("Save results…");
     private final java.util.List<Component> setupControls = new java.util.ArrayList<>();
 
     // display
@@ -129,14 +133,16 @@ public final class MatchPanel extends JPanel {
 
     private MatchController controller;
     private MatchSetup setup;
+    private final List<MatchGame> finishedGames = new java.util.ArrayList<>();
     private String xName = "";
     private String oName = "";
     private boolean pausing;
 
-    public MatchPanel(List<EngineConfig> engines, MatchPrefs prefs, Consumer<MatchPrefs> savePrefs,
-                      Consumer<List<EngineConfig>> saveEngines) {
+    public MatchPanel(List<EngineConfig> engines, MatchPrefs prefs, Consumer<GameRecord> reviewHandler,
+                      Consumer<MatchPrefs> savePrefs, Consumer<List<EngineConfig>> saveEngines) {
         super(new BorderLayout(8, 8));
         this.engines = List.copyOf(engines);
+        this.reviewHandler = reviewHandler;
         this.savePrefs = savePrefs;
         this.saveEngines = saveEngines;
         this.timeControl = new TimeControlPanel(prefs.timeControl());
@@ -235,6 +241,8 @@ public final class MatchPanel extends JPanel {
         JPanel tools = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
         tools.add(editEngines);
         tools.add(console);
+        tools.add(saveResults);
+        saveResults.addActionListener(e -> saveResults());
         editEngines.addActionListener(e -> editEngines());
         console.addActionListener(e -> showConsole());
         p.add(tools);
@@ -300,6 +308,18 @@ public final class MatchPanel extends JPanel {
         bottom.add(score, BorderLayout.NORTH);
         JTable games = new JTable(table);
         games.setFillsViewportHeight(true);
+        games.setToolTipText("Double-click a game to review it in the main window");
+        games.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int row = games.rowAtPoint(e.getPoint());
+                    if (row >= 0) {
+                        reviewRow(row);
+                    }
+                }
+            }
+        });
         games.getColumnModel().getColumn(0).setPreferredWidth(40);
         games.getColumnModel().getColumn(5).setPreferredWidth(50);
         games.getColumnModel().getColumn(6).setPreferredWidth(30);
@@ -411,6 +431,7 @@ public final class MatchPanel extends JPanel {
         savePrefs.accept(prefs);
         setup = s;
         table.setRowCount(0);
+        finishedGames.clear();
         analysisA.clear();
         analysisB.clear();
         analysisA.setEngine("A: " + s.nameA());
@@ -456,6 +477,56 @@ public final class MatchPanel extends JPanel {
             controller.pause();
         }
         updateButtons();
+    }
+
+    /** Opens the game in row {@code row} of the list in the main window. */
+    void reviewRow(int row) {
+        if (row >= 0 && row < finishedGames.size() && setup != null) {
+            reviewHandler.accept(MatchReport.record(setup, finishedGames.get(row), LocalDate.now()));
+        }
+    }
+
+    /** Asks for a file and saves the match there: the summary and every finished game. */
+    private void saveResults() {
+        if (finishedGames.isEmpty()) {
+            problem("No game has finished yet.");
+            return;
+        }
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Ataxx games (*.ataxx)", "ataxx"));
+        chooser.setSelectedFile(new File("match-" + LocalDate.now() + ".ataxx"));
+        if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
+            return;
+        }
+        File f = chooser.getSelectedFile();
+        if (f.exists() && JOptionPane.showConfirmDialog(this, f.getName() + " exists. Replace it?", "Save results",
+                JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) {
+            return;
+        }
+        String problem = saveResultsTo(f.toPath());
+        if (problem != null) {
+            problem(problem);
+        }
+    }
+
+    /** Writes the match to {@code file}; returns an error message, or null on success. */
+    String saveResultsTo(java.nio.file.Path file) {
+        if (setup == null || finishedGames.isEmpty()) {
+            return "No game has finished yet.";
+        }
+        String status = controller == null ? "not started" : switch (controller.state()) {
+            case FINISHED -> "finished";
+            case STOPPED -> "stopped";
+            case FAILED -> "failed";
+            default -> "running";
+        };
+        try {
+            Files.writeString(file, MatchReport.toText(setup, List.copyOf(finishedGames), controller.standings(), status,
+                    LocalDate.now()));
+            return null;
+        } catch (IOException e) {
+            return "Could not save the results: " + e.getMessage();
+        }
     }
 
     /** True while a match is running or paused. */
@@ -552,6 +623,7 @@ public final class MatchPanel extends JPanel {
                 clockState.set(null);
                 board.setPosition(g.position(), g.lastMove());
                 updatePlayers(null, null);
+                finishedGames.add(game);
                 String result = GameRecord.resultTag(game.result().outcome());
                 double a = game.scoreForA();
                 table.addRow(new Object[] {game.index() + 1, game.aIsX() ? setup.nameA() : setup.nameB(),

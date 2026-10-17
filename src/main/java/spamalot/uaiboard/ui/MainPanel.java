@@ -20,6 +20,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import spamalot.uaiboard.game.Game;
 import spamalot.uaiboard.game.GameRecord;
+import spamalot.uaiboard.game.Move;
 import spamalot.uaiboard.game.Outcome;
 import spamalot.uaiboard.game.Position;
 import spamalot.uaiboard.game.Side;
@@ -58,6 +59,9 @@ public final class MainPanel extends JPanel implements PlayController.View {
     private String engineStatus = "";
     private String gameOverReason = "";
     private boolean flipped;
+    private final java.util.List<Move> redoMoves = new java.util.ArrayList<>();
+    private String loadedDescription = "";
+    private java.util.function.Function<java.util.List<GameRecord>, Integer> gameChooser = this::askWhichGame;
     private Consumer<Boolean> flipListener = f -> { };
 
     public MainPanel(Path settingsFile) {
@@ -97,7 +101,7 @@ public final class MainPanel extends JPanel implements PlayController.View {
         add(side, BorderLayout.EAST);
         add(status, BorderLayout.SOUTH);
 
-        board.setMoveListener(controller::humanMove);
+        board.setMoveListener(this::humanMove);
         timer = new Timer(100, e -> {
             controller.tick();
             updateClocks();
@@ -125,6 +129,8 @@ public final class MainPanel extends JPanel implements PlayController.View {
     }
 
     private void resetDisplay() {
+        redoMoves.clear();
+        loadedDescription = "";
         analysis.clear();
         analysis.setEngine("");
         engineStatus = "";
@@ -192,16 +198,84 @@ public final class MainPanel extends JPanel implements PlayController.View {
 
     /** Reads a game from {@code file} and continues it as a game between two people; returns an error message, or null. */
     String loadFrom(Path file) {
-        GameRecord record;
+        java.util.List<GameRecord> records;
         try {
-            record = GameRecord.parse(Files.readString(file));
+            records = GameRecord.parseAll(Files.readString(file));
         } catch (IOException | RuntimeException e) {
             return "Could not load the game: " + e.getMessage();
         }
+        int chosen = 0;
+        if (records.size() > 1) {
+            chosen = gameChooser.apply(records);
+            if (chosen < 0) {
+                return null; // the user cancelled
+            }
+        }
+        loadRecord(records.get(chosen));
+        return null;
+    }
+
+    /** Continues {@code record} as a game between two people, from its last position. */
+    void loadRecord(GameRecord record) {
         resetDisplay();
         setFlipped(false);
+        loadedDescription = describe(record);
         controller.loadGame(record.toGame());
-        return null;
+    }
+
+    /** Opens {@code record} for review: the board shows its start, and Redo (or Go to End) steps through the moves. */
+    public void reviewRecord(GameRecord record) {
+        loadRecord(record);
+        goToStart();
+        java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+        if (w != null) {
+            w.toFront();
+        }
+    }
+
+    /** {@code gataxx vs Moonbird, round 3, 1-0 (game over)} from a record's tags; empty if it has none of them. */
+    static String describe(GameRecord r) {
+        StringBuilder sb = new StringBuilder();
+        if (!r.tag("X").isEmpty() || !r.tag("O").isEmpty()) {
+            sb.append("x ").append(r.tag("X")).append(" vs o ").append(r.tag("O"));
+        }
+        if (!r.tag("Round").isEmpty()) {
+            sb.append(sb.length() > 0 ? ", " : "").append("round ").append(r.tag("Round"));
+        }
+        String result = r.tag("Result");
+        if (!result.isEmpty() && !result.equals("*")) {
+            sb.append(sb.length() > 0 ? ", " : "").append(result);
+            if (!r.tag("Termination").isEmpty() && !r.tag("Termination").equals("game over")) {
+                sb.append(" (").append(r.tag("Termination")).append(')');
+            }
+        }
+        return sb.toString();
+    }
+
+    /** One line per game for the list the user picks from. */
+    static String listLabel(int number, GameRecord r) {
+        String d = describe(r);
+        return number + ". " + (d.isEmpty() ? "game" : d) + "  [" + r.moves().size() + " moves]";
+    }
+
+    /** Shows the games of a file and returns the index of the one the user picks, or -1 if they cancel. */
+    private int askWhichGame(java.util.List<GameRecord> records) {
+        String[] labels = new String[records.size()];
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = listLabel(i + 1, records.get(i));
+        }
+        javax.swing.JList<String> list = new javax.swing.JList<>(labels);
+        list.setSelectedIndex(0);
+        javax.swing.JScrollPane scroll = new javax.swing.JScrollPane(list);
+        scroll.setPreferredSize(new Dimension(560, 300));
+        int answer = JOptionPane.showConfirmDialog(this, scroll, "This file holds " + records.size() + " games: choose one",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        return answer == JOptionPane.OK_OPTION ? Math.max(0, list.getSelectedIndex()) : -1;
+    }
+
+    /** For tests: replaces the question asked when a file holds several games. */
+    void setGameChooser(java.util.function.Function<java.util.List<GameRecord>, Integer> chooser) {
+        this.gameChooser = chooser;
     }
 
     /** Asks for a file and saves the game there. */
@@ -331,8 +405,61 @@ public final class MainPanel extends JPanel implements PlayController.View {
         }
     }
 
+    /** A person's move: it ends any stepping forward through taken-back moves. */
+    void humanMove(Move move) {
+        redoMoves.clear();
+        controller.humanMove(move);
+    }
+
     public void undo() {
+        java.util.List<Move> before = controller.game().moves();
         controller.undo();
+        java.util.List<Move> after = controller.game().moves();
+        if (controller.setup().vsEngine()) {
+            redoMoves.clear(); // an engine would answer, so there is nothing to step forward through
+            return;
+        }
+        // Remember what was taken back (passes come back by themselves) so that Redo can play it again.
+        java.util.List<Move> taken = new java.util.ArrayList<>();
+        for (Move m : before.subList(after.size(), before.size())) {
+            if (!m.isPass()) {
+                taken.add(m);
+            }
+        }
+        redoMoves.addAll(0, taken);
+    }
+
+    public boolean canRedo() {
+        return !redoMoves.isEmpty() && !controller.setup().vsEngine();
+    }
+
+    /** Plays again the move that Undo took back. */
+    public void redo() {
+        if (canRedo()) {
+            controller.humanMove(redoMoves.remove(0));
+        }
+    }
+
+    /** Takes back every move (Redo then steps forward). */
+    public void goToStart() {
+        while (!controller.game().moves().isEmpty() && !controller.setup().vsEngine()) {
+            int before = controller.game().moves().size();
+            undo();
+            if (controller.game().moves().size() >= before) {
+                break;
+            }
+        }
+    }
+
+    /** Plays again every move that was taken back. */
+    public void goToEnd() {
+        while (canRedo()) {
+            int before = redoMoves.size();
+            redo();
+            if (redoMoves.size() >= before) {
+                break;
+            }
+        }
     }
 
     /** Opens the engine manager. */
@@ -353,7 +480,7 @@ public final class MainPanel extends JPanel implements PlayController.View {
             matchFrame.toFront();
             return;
         }
-        matchFrame = new MatchFrame(this, settings.engines(), settings.matchPrefs(), prefs -> {
+        matchFrame = new MatchFrame(this, settings.engines(), settings.matchPrefs(), this::reviewRecord, prefs -> {
             settings = settings.withMatchPrefs(prefs);
             saveSettings();
         }, edited -> {
@@ -473,6 +600,9 @@ public final class MainPanel extends JPanel implements PlayController.View {
                 text += "    " + engineStatus;
             }
         }
+        if (!loadedDescription.isEmpty() && !controller.setup().vsEngine()) {
+            text += "    " + loadedDescription;
+        }
         status.setText(text);
     }
 
@@ -517,6 +647,10 @@ public final class MainPanel extends JPanel implements PlayController.View {
             return String.format("%d:%02d.%d", m, s, ms % 1000 / 100);
         }
         return String.format("%d:%02d", m, s);
+    }
+
+    String statusText() {
+        return status.getText();
     }
 
     /** For tests and screenshots: the board's component. */

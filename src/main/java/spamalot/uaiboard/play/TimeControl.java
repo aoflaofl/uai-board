@@ -29,6 +29,23 @@ public sealed interface TimeControl {
         };
     }
 
+    /** The time control in words: {@code 0.1 s per move} or {@code 5 min + 2 s per move}. */
+    default String describe() {
+        return switch (this) {
+            case MoveTime m -> seconds(m.millis()) + " per move";
+            case Clock c -> (c.baseMillis() >= 60_000 && c.baseMillis() % 60_000 == 0 ? c.baseMillis() / 60_000 + " min"
+                    : seconds(c.baseMillis())) + " + " + seconds(c.incrementMillis()) + " per move";
+        };
+    }
+
+    private static String seconds(long millis) {
+        if (millis % 1000 == 0) {
+            return millis / 1000 + " s";
+        }
+        String s = String.format(java.util.Locale.ROOT, "%.3f", millis / 1000.0);
+        return s.replaceAll("0+$", "") + " s";
+    }
+
     /** Parses {@link #format} output; returns {@code fallback} if the text is not understood. */
     static TimeControl parse(String text, TimeControl fallback) {
         try {

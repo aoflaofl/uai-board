@@ -28,6 +28,7 @@ class MatchPanelTest {
 
     private final List<MatchPrefs> savedPrefs = Collections.synchronizedList(new ArrayList<>());
     private final List<String> problems = Collections.synchronizedList(new ArrayList<>());
+    private final List<spamalot.uaiboard.game.GameRecord> reviewed = Collections.synchronizedList(new ArrayList<>());
     private MatchPanel panel;
 
     @AfterEach
@@ -39,7 +40,7 @@ class MatchPanelTest {
 
     private MatchPanel panel(List<EngineConfig> engines, MatchPrefs prefs) throws Exception {
         SwingUtilities.invokeAndWait(() -> {
-            panel = new MatchPanel(engines, prefs, savedPrefs::add, e -> { });
+            panel = new MatchPanel(engines, prefs, reviewed::add, savedPrefs::add, e -> { });
             panel.setProblemSink(problems::add);
         });
         return panel;
@@ -89,6 +90,31 @@ class MatchPanelTest {
         assertEquals(1, savedPrefs.size());
         assertEquals(prefs(2), savedPrefs.get(0));
         assertTrue(problems.isEmpty(), problems.toString());
+    }
+
+    @Test
+    void theMatchCanBeSavedAndItsGamesReviewed() throws Exception {
+        panel(engines(), prefs(2));
+        assertTrue(onEdt(() -> panel.saveResultsTo(dir.resolve("none.ataxx"))).contains("No game has finished"));
+        SwingUtilities.invokeAndWait(panel::startMatch);
+        await(() -> panel.matchState() == MatchController.State.FINISHED && panel.finishedRows() == 2);
+        Path file = dir.resolve("match.ataxx");
+        assertEquals(null, onEdt(() -> panel.saveResultsTo(file)));
+        String text = Files.readString(file);
+        assertTrue(text.startsWith("# uai-board engine match\n"), text);
+        assertTrue(text.contains("# Games: 2 of 2 played (finished)"), text);
+        List<spamalot.uaiboard.game.GameRecord> games = spamalot.uaiboard.game.GameRecord.parseAll(text);
+        assertEquals(2, games.size());
+        assertEquals("fake-normal", games.get(0).tag("X"));
+        assertEquals("fake-chatty", games.get(1).tag("X"));
+        assertEquals("1", games.get(0).tag("Round"));
+
+        SwingUtilities.invokeAndWait(() -> panel.reviewRow(1));
+        assertEquals(1, reviewed.size());
+        assertEquals(games.get(1).moves(), reviewed.get(0).moves());
+        assertEquals("2", reviewed.get(0).tag("Round"));
+        SwingUtilities.invokeAndWait(() -> panel.reviewRow(5)); // no such row: ignored
+        assertEquals(1, reviewed.size());
     }
 
     @Test

@@ -51,6 +51,15 @@ public final class MainFrame extends JFrame {
         JMenuItem undo = new JMenuItem("Undo");
         undo.setAccelerator(shortcut(KeyEvent.VK_Z));
         undo.addActionListener(e -> panel.undo());
+        JMenuItem redo = new JMenuItem("Redo");
+        redo.setAccelerator(shortcut(KeyEvent.VK_Y));
+        redo.addActionListener(e -> panel.redo());
+        JMenuItem toStart = new JMenuItem("Go to Start");
+        toStart.setAccelerator(shortcut(KeyEvent.VK_HOME));
+        toStart.addActionListener(e -> panel.goToStart());
+        JMenuItem toEnd = new JMenuItem("Go to End");
+        toEnd.setAccelerator(shortcut(KeyEvent.VK_END));
+        toEnd.addActionListener(e -> panel.goToEnd());
         JMenuItem save = new JMenuItem("Save Game…");
         save.setAccelerator(shortcut(KeyEvent.VK_S));
         save.addActionListener(e -> panel.saveGame());
@@ -65,6 +74,8 @@ public final class MainFrame extends JFrame {
         game.addMenuListener(new MenuListener() {
             @Override
             public void menuSelected(MenuEvent e) {
+                redo.setEnabled(panel.canRedo());
+                toEnd.setEnabled(panel.canRedo());
                 resign.setEnabled(panel.canResign());
                 draw.setEnabled(panel.canAgreeDraw());
             }
@@ -84,6 +95,9 @@ public final class MainFrame extends JFrame {
         });
         game.add(newGame);
         game.add(undo);
+        game.add(redo);
+        game.add(toStart);
+        game.add(toEnd);
         game.addSeparator();
         game.add(save);
         game.add(load);

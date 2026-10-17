@@ -299,4 +299,21 @@ class PlayControllerTest {
         assertEquals(Side.X, get(() -> controller.game().position().sideToMove()));
         assertTrue(get(controller::inputAllowed));
     }
+
+    @Test
+    void undoNeverLeavesAStuckSideToMove() throws Exception {
+        // o is boxed in: the game starts with o's pass, x plays d2, and o passes again.
+        spamalot.uaiboard.game.Position start =
+                spamalot.uaiboard.game.Position.fromFen("7/7/7/7/---4/--x4/o-x4 o 0 1");
+        run(() -> controller.startGame(new GameSetup(null, Side.X, GameSetup.DEFAULT.timeControl()), null, start));
+        run(() -> controller.humanMove(Move.parse("d2")));
+        assertEquals(List.of(Move.pass(), Move.parse("d2"), Move.pass()), get(() -> controller.game().moves()));
+        run(controller::undo); // takes back d2 and the pass that followed it
+        assertEquals(List.of(Move.pass()), get(() -> controller.game().moves()));
+        assertEquals(Side.X, get(() -> controller.game().position().sideToMove()));
+        assertTrue(get(controller::inputAllowed));
+        run(controller::undo); // back to the start: the stuck side passes again by itself
+        assertEquals(List.of(Move.pass()), get(() -> controller.game().moves()));
+        assertEquals(Side.X, get(() -> controller.game().position().sideToMove()));
+    }
 }

@@ -263,14 +263,7 @@ public final class PlayController implements AutoCloseable {
     }
 
     private void afterMove() {
-        // A side that cannot move passes on its own.
-        while (!game.position().isGameOver() && game.position().legalMoves().equals(List.of(Move.pass()))) {
-            Side mover = game.position().sideToMove();
-            game.play(Move.pass());
-            if (clock != null && clock.running() != null) {
-                clock.switchTo(mover, game.position().sideToMove());
-            }
-        }
+        playPasses();
         view.positionChanged();
         if (game.position().isGameOver()) {
             finish(game.position().outcome(), "");
@@ -437,6 +430,7 @@ public final class PlayController implements AutoCloseable {
                 popMove();
             }
         }
+        playPasses(); // back at a start position where the side to move is stuck
         if (clock != null) {
             clock.resume(game.position().sideToMove());
         }
@@ -448,10 +442,25 @@ public final class PlayController implements AutoCloseable {
         engineToMoveIfDue();
     }
 
+    /**
+     * Takes back the last real move together with the passes that followed it: a pass is only ever the consequence of the move
+     * before it, so the game goes back to a position where somebody has a real choice.
+     */
     private void popMove() {
-        game.undo();
         while (game.lastMove() != null && game.lastMove().isPass()) {
             game.undo();
+        }
+        game.undo();
+    }
+
+    /** A side that cannot move passes on its own. */
+    private void playPasses() {
+        while (!game.position().isGameOver() && game.position().legalMoves().equals(List.of(Move.pass()))) {
+            Side mover = game.position().sideToMove();
+            game.play(Move.pass());
+            if (clock != null && clock.running() != null) {
+                clock.switchTo(mover, game.position().sideToMove());
+            }
         }
     }
 

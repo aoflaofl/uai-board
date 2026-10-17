@@ -169,7 +169,9 @@ public record GameRecord(Map<String, String> tags, Position start, List<Move> mo
             if (i > 0) {
                 sb.append('\n');
             }
-            sb.append(games.get(i).toText());
+            // A game starts at its first tag line, so every game needs at least one.
+            GameRecord g = games.get(i);
+            sb.append((g.tags().isEmpty() ? g.withTag("Event", "?") : g).toText());
         }
         return sb.toString();
     }

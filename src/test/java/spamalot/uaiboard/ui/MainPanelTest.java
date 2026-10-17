@@ -12,6 +12,7 @@ import java.util.Set;
 import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import spamalot.uaiboard.game.GameRecord;
 import spamalot.uaiboard.game.Move;
 import spamalot.uaiboard.play.FakeEngines;
 import spamalot.uaiboard.play.GameSetup;
@@ -137,5 +138,101 @@ class MainPanelTest {
         });
         assertEquals("fake-normal", Settings.load(file).analysisEngine());
         SwingUtilities.invokeAndWait(panel::close);
+    }
+
+    private static int movesOf(MainPanel p) {
+        return p.controller().game().moves().size();
+    }
+
+    @Test
+    void undoRedoAndSteppingThroughAGame() throws Exception {
+        MainPanel panel = newPanel();
+        SwingUtilities.invokeAndWait(() -> {
+            panel.humanMove(Move.parse("b6"));
+            panel.humanMove(Move.parse("b2"));
+            panel.humanMove(Move.parse("a7c5"));
+            assertEquals(false, panel.canRedo());
+            panel.undo();
+            panel.undo();
+            assertEquals(1, movesOf(panel));
+            assertTrue(panel.canRedo());
+            panel.redo();
+            assertEquals(2, movesOf(panel));
+            panel.goToStart();
+            assertEquals(0, movesOf(panel));
+            panel.goToEnd();
+            assertEquals(3, movesOf(panel));
+            assertEquals(false, panel.canRedo());
+            // A new move after stepping back ends the way forward.
+            panel.undo();
+            assertTrue(panel.canRedo());
+            panel.humanMove(Move.parse("a7c6"));
+            assertEquals(false, panel.canRedo());
+            assertEquals(3, movesOf(panel));
+        });
+        SwingUtilities.invokeAndWait(panel::close);
+    }
+
+    private static GameRecord record(String text) {
+        return GameRecord.parse(text);
+    }
+
+    @Test
+    void reviewingAGameStartsAtTheBeginningAndStepsForward() throws Exception {
+        MainPanel panel = newPanel();
+        GameRecord r = record("[X \"gataxx\"]\n[O \"Moonbird\"]\n[Result \"1-0\"]\n[Termination \"time forfeit\"]\n"
+                + "[Round \"4\"]\n\n1. b6 b2 2. a7c5 f6 1-0\n");
+        SwingUtilities.invokeAndWait(() -> {
+            panel.reviewRecord(r);
+            assertEquals(0, movesOf(panel));
+            assertTrue(panel.canRedo());
+            assertTrue(panel.statusText().contains("x gataxx vs o Moonbird, round 4, 1-0 (time forfeit)"), panel.statusText());
+            panel.goToEnd();
+            assertEquals(4, movesOf(panel));
+            assertEquals(r.toGame().position(), panel.controller().game().position());
+        });
+        SwingUtilities.invokeAndWait(panel::close);
+    }
+
+    @Test
+    void aFileWithSeveralGamesAsksWhichOneToLoad() throws Exception {
+        MainPanel panel = newPanel();
+        Path file = dir.resolve("many.ataxx");
+        java.nio.file.Files.writeString(file, GameRecord.toText(java.util.List.of(record("1. b6 b2"), record("1. f1 f6 2. g2"),
+                record("1. a7c5")), java.util.List.of("a match")));
+        java.util.List<String> asked = new java.util.ArrayList<>();
+        SwingUtilities.invokeAndWait(() -> {
+            panel.setGameChooser(games -> {
+                asked.add(games.size() + " games");
+                return 1;
+            });
+            assertEquals(null, panel.loadFrom(file));
+            assertEquals(3, movesOf(panel)); // the second game: f1 f6 g2
+            panel.setGameChooser(games -> -1); // cancelled: nothing changes
+            assertEquals(null, panel.loadFrom(file));
+            assertEquals(3, movesOf(panel));
+            panel.setGameChooser(games -> {
+                throw new AssertionError("a single game is loaded without asking");
+            });
+            Path one = dir.resolve("one.ataxx");
+            try {
+                java.nio.file.Files.writeString(one, record("1. b6 b2").toText());
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+            assertEquals(null, panel.loadFrom(one));
+            assertEquals(2, movesOf(panel));
+        });
+        assertEquals(java.util.List.of("3 games"), asked);
+        SwingUtilities.invokeAndWait(panel::close);
+    }
+
+    @Test
+    void gamesAreListedWithTheirTagsForTheChooser() {
+        GameRecord r = record("[X \"A\"]\n[O \"B\"]\n[Result \"0-1\"]\n[Round \"7\"]\n\n1. b6 b2 2. a7c5");
+        assertEquals("x A vs o B, round 7, 0-1", MainPanel.describe(r));
+        assertEquals("3. x A vs o B, round 7, 0-1  [3 moves]", MainPanel.listLabel(3, r));
+        assertEquals("", MainPanel.describe(record("1. b6")));
+        assertEquals("2. game  [1 moves]", MainPanel.listLabel(2, record("1. b6")));
     }
 }
