@@ -459,7 +459,7 @@ public final class PlayController implements AutoCloseable {
         if (session != null) {
             EngineSession s = session;
             session = null;
-            worker.execute(s::close);
+            Analyser.closeInBackground(s);
         }
         engineReady = false;
     }

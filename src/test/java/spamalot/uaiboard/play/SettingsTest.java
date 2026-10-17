@@ -31,6 +31,11 @@ class SettingsTest {
         s.save(file);
         Settings back = Settings.load(file);
         assertEquals(s, back);
+        assertNull(back.analysisEngine());
+        Settings withAnalysis = s.withAnalysisEngine("Funes");
+        withAnalysis.save(file);
+        assertEquals("Funes", Settings.load(file).analysisEngine());
+        assertEquals("Funes", withAnalysis.withEngines(List.of()).withLastSetup(GameSetup.DEFAULT).analysisEngine());
         assertEquals(List.of("Hash", "Clear Hash", "Zebra", "Alpha"), List.copyOf(back.engine("gataxx").options().keySet()));
         assertEquals("1|2", back.engine("gataxx").options().get("Zebra"));
         assertEquals("/opt/funes", back.engine("Funes").command());

@@ -13,6 +13,9 @@ import javax.swing.SwingUtilities;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import spamalot.uaiboard.game.Move;
+import spamalot.uaiboard.play.FakeEngines;
+import spamalot.uaiboard.play.GameSetup;
+import spamalot.uaiboard.play.Settings;
 
 /** Builds the whole window content without a display, plays a move, paints it and closes it. */
 class MainPanelTest {
@@ -105,6 +108,34 @@ class MainPanelTest {
             panel.setFlipped(false);
             assertEquals(false, panel.board().isFlipped());
         });
+        SwingUtilities.invokeAndWait(panel::close);
+    }
+
+    @Test
+    void analysisModeTurnsOnFollowsMovesAndTurnsOff() throws Exception {
+        Path file = dir.resolve("analysis.properties");
+        new Settings(java.util.List.of(FakeEngines.config("normal")), GameSetup.DEFAULT).save(file);
+        MainPanel[] holder = new MainPanel[1];
+        SwingUtilities.invokeAndWait(() -> holder[0] = new MainPanel(file));
+        MainPanel panel = holder[0];
+        boolean[] told = new boolean[1];
+        SwingUtilities.invokeAndWait(() -> {
+            panel.setAnalysisListener(on -> told[0] = on);
+            assertEquals(java.util.List.of("fake-normal"), panel.analysisEngineNames());
+            assertEquals("fake-normal", panel.analysisEngineName());
+            panel.setAnalysisEnabled(true);
+            assertTrue(panel.isAnalysing());
+            assertTrue(told[0]);
+            panel.controller().humanMove(Move.parse("b6")); // the analysis follows the position
+        });
+        Thread.sleep(500);
+        SwingUtilities.invokeAndWait(() -> {
+            panel.chooseAnalysisEngine("fake-normal");
+            panel.setAnalysisEnabled(false);
+            assertEquals(false, panel.isAnalysing());
+            assertEquals(false, told[0]);
+        });
+        assertEquals("fake-normal", Settings.load(file).analysisEngine());
         SwingUtilities.invokeAndWait(panel::close);
     }
 }

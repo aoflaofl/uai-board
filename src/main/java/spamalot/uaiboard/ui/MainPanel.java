@@ -23,6 +23,7 @@ import spamalot.uaiboard.game.GameRecord;
 import spamalot.uaiboard.game.Outcome;
 import spamalot.uaiboard.game.Position;
 import spamalot.uaiboard.game.Side;
+import spamalot.uaiboard.play.Analyser;
 import spamalot.uaiboard.play.EngineConfig;
 import spamalot.uaiboard.play.GameSetup;
 import spamalot.uaiboard.play.PlayController;
@@ -40,6 +41,10 @@ public final class MainPanel extends JPanel implements PlayController.View {
     private Settings settings;
     private final BoardPanel board = new BoardPanel(Position.start());
     private final AnalysisPanel analysis = new AnalysisPanel();
+    private final AnalysisPanel analysisView = new AnalysisPanel("Analysis", true);
+    private final Analyser analyser;
+    private boolean analysing;
+    private Consumer<Boolean> analysisListener = on -> { };
     private final JTextArea moveList = new JTextArea(12, 16);
     private final JLabel status = new JLabel(" ");
     private final JLabel xClock = new JLabel(" ", JLabel.CENTER);
@@ -59,6 +64,7 @@ public final class MainPanel extends JPanel implements PlayController.View {
         this.settingsFile = settingsFile;
         this.settings = Settings.load(settingsFile);
         this.controller = new PlayController(SwingUtilities::invokeLater, this);
+        this.analyser = new Analyser(SwingUtilities::invokeLater, analyserListener());
 
         for (JLabel l : new JLabel[] {xClock, oClock}) {
             l.setFont(new Font(Font.MONOSPACED, Font.BOLD, 20));
@@ -75,7 +81,12 @@ public final class MainPanel extends JPanel implements PlayController.View {
         moves.setBorder(BorderFactory.createTitledBorder("Moves"));
         JPanel side = new JPanel(new BorderLayout(0, 6));
         side.setBorder(BorderFactory.createEmptyBorder(6, 0, 6, 8));
-        side.add(analysis, BorderLayout.NORTH);
+        JPanel panels = new JPanel();
+        panels.setLayout(new javax.swing.BoxLayout(panels, javax.swing.BoxLayout.Y_AXIS));
+        panels.add(analysis);
+        panels.add(analysisView);
+        analysisView.setVisible(false);
+        side.add(panels, BorderLayout.NORTH);
         side.add(moves, BorderLayout.CENTER);
         side.setPreferredSize(new Dimension(250, 560));
         status.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
@@ -226,6 +237,99 @@ public final class MainPanel extends JPanel implements PlayController.View {
         return chooser;
     }
 
+    // ---- analysis mode ----
+
+    private Analyser.Listener analyserListener() {
+        return new Analyser.Listener() {
+            @Override
+            public void status(String text) {
+                analysisView.setEngine(text);
+            }
+
+            @Override
+            public void info(UaiInfo info, Side sideToMove) {
+                analysisView.setInfo(info, sideToMove);
+            }
+
+            @Override
+            public void problem(String message) {
+                setAnalysing(false);
+                log("-- analysis engine problem: " + message + "\n");
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(MainPanel.this,
+                        message + "\n\nAnalysis is off.", "Analysis engine problem", JOptionPane.ERROR_MESSAGE));
+            }
+
+            @Override
+            public void line(UaiClient.Direction direction, String line) {
+                log("[analysis] " + EngineLogFrame.format(direction, line));
+            }
+        };
+    }
+
+    private void setAnalysing(boolean on) {
+        analysing = on;
+        analysisView.setVisible(on);
+        if (!on) {
+            analysisView.clear();
+            analysisView.setEngine("");
+        }
+        analysisListener.accept(on);
+    }
+
+    /** Told whenever analysis mode turns on or off (so a menu check box can follow). */
+    public void setAnalysisListener(Consumer<Boolean> listener) {
+        this.analysisListener = listener;
+    }
+
+    public boolean isAnalysing() {
+        return analysing;
+    }
+
+    /** Names of the engines that can be chosen for analysis. */
+    public java.util.List<String> analysisEngineNames() {
+        return settings.engines().stream().map(EngineConfig::name).toList();
+    }
+
+    /** The engine chosen for analysis: the saved choice, else the first engine; null if there are no engines. */
+    public String analysisEngineName() {
+        EngineConfig e = analysisEngine();
+        return e == null ? null : e.name();
+    }
+
+    private EngineConfig analysisEngine() {
+        EngineConfig saved = settings.analysisEngine() == null ? null : settings.engine(settings.analysisEngine());
+        return saved != null ? saved : settings.engines().isEmpty() ? null : settings.engines().get(0);
+    }
+
+    /** Turns analysis mode on or off. Without a configured engine it explains what to do and stays off. */
+    public void setAnalysisEnabled(boolean on) {
+        if (!on) {
+            analyser.stop();
+            setAnalysing(false);
+            return;
+        }
+        EngineConfig engine = analysisEngine();
+        if (engine == null) {
+            setAnalysing(false);
+            JOptionPane.showMessageDialog(this, "Add an engine first (Engine > Engines…).", "Analysis",
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        setAnalysing(true);
+        Game g = controller.game();
+        analyser.analyse(g.start(), g.moves());
+        analyser.start(engine);
+    }
+
+    /** Chooses the engine used for analysis (restarting the analysis if it is on). */
+    public void chooseAnalysisEngine(String name) {
+        settings = settings.withAnalysisEngine(name);
+        saveSettings();
+        if (analysing) {
+            analyser.start(analysisEngine());
+        }
+    }
+
     public void undo() {
         controller.undo();
     }
@@ -234,7 +338,7 @@ public final class MainPanel extends JPanel implements PlayController.View {
     public void manageEngines() {
         java.util.List<EngineConfig> edited = EnginesDialog.show(this, settings.engines());
         if (edited != null) {
-            settings = new Settings(edited, settings.lastSetup());
+            settings = settings.withEngines(edited);
             saveSettings();
         }
     }
@@ -263,6 +367,7 @@ public final class MainPanel extends JPanel implements PlayController.View {
     /** Stops the engine and the timers; call before the window closes. */
     public void close() {
         timer.stop();
+        analyser.close();
         controller.close();
         if (console != null) {
             console.dispose();
@@ -288,6 +393,10 @@ public final class MainPanel extends JPanel implements PlayController.View {
         moveList.setCaretPosition(moveList.getDocument().getLength());
         updateClocks();
         updateStatus();
+        analysis.setVisible(controller.setup().vsEngine());
+        if (analysing) {
+            analyser.analyse(g.start(), g.moves());
+        }
     }
 
     @Override

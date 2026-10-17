@@ -24,12 +24,14 @@ class EngineSessionTest {
         final BlockingQueue<Object[]> moves = new LinkedBlockingQueue<>();
         final BlockingQueue<String> problems = new LinkedBlockingQueue<>();
         final List<String> infoText = Collections.synchronizedList(new ArrayList<>());
+        final List<Object> infoTokens = Collections.synchronizedList(new ArrayList<>());
 
         @Override
-        public void onInfo(UaiInfo info) {
+        public void onInfo(Object token, UaiInfo info) {
             if (info.text() != null) {
                 infoText.add(info.text());
             }
+            infoTokens.add(token);
         }
 
         @Override
@@ -117,5 +119,21 @@ class EngineSessionTest {
     void aBrokenEngineFailsToLaunch() {
         assertThrows(UaiException.class, () -> EngineSession.launch(new EngineConfig("x", "/no/such/engine"), new Events()));
         assertThrows(UaiException.class, () -> EngineSession.launch(new EngineConfig("x", "java \"unclosed"), new Events()));
+    }
+
+    @Test
+    void infoOfACancelledSearchIsDroppedAndLiveInfoCarriesItsToken() throws Exception {
+        Events ev = new Events();
+        try (EngineSession s = EngineSession.launch(FakeEngines.config("chatty"), ev)) {
+            ev.infoTokens.clear();
+            s.requestMove("a", Position.start(), List.of(), GoParams.infinite());
+            for (int i = 0; i < 100 && ev.infoTokens.size() < 2; i++) {
+                Thread.sleep(50);
+            }
+            assertTrue(ev.infoTokens.size() >= 2 && ev.infoTokens.stream().allMatch("a"::equals), ev.infoTokens.toString());
+            s.cancel();
+            Thread.sleep(500);
+            assertTrue(ev.infoText.stream().noneMatch("late"::equals), ev.infoText.toString());
+        }
     }
 }

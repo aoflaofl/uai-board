@@ -32,6 +32,7 @@ public final class NewGameDialog extends JDialog {
     private static final String HUMAN = "Another person (two players)";
 
     private final Component parent;
+    private final Settings original;
     private List<EngineConfig> engines;
     private final JComboBox<String> opponent = new JComboBox<>();
     private final JRadioButton playX = new JRadioButton("x (moves first)");
@@ -51,6 +52,7 @@ public final class NewGameDialog extends JDialog {
     private NewGameDialog(Component parent, Settings settings) {
         super(SwingUtilities.getWindowAncestor(parent), "New game", ModalityType.APPLICATION_MODAL);
         this.parent = parent;
+        this.original = settings;
         this.engines = new ArrayList<>(settings.engines());
         fillOpponents(settings.lastSetup().engineName());
 
@@ -213,7 +215,8 @@ public final class NewGameDialog extends JDialog {
                         ((Number) incrementSeconds.getValue()).longValue() * 1000)
                 : new TimeControl.MoveTime(Math.max(1, Math.round(((Number) moveSeconds.getValue()).doubleValue() * 1000)));
         String engine = engineChosen() ? (String) opponent.getSelectedItem() : null;
-        result = new Result(new Settings(engines, new GameSetup(engine, playO.isSelected() ? Side.O : Side.X, tc)), start);
+        result = new Result(original.withEngines(engines)
+                .withLastSetup(new GameSetup(engine, playO.isSelected() ? Side.O : Side.X, tc)), start);
         dispose();
     }
 }

@@ -21,6 +21,14 @@ public final class EngineSession implements AutoCloseable {
     public interface Callbacks {
         default void onInfo(UaiInfo info) { }
 
+        /**
+         * An {@code info} line of the search requested with {@code token} (null for lines the engine printed while starting up).
+         * Lines of a search that has been cancelled are never passed on. The default hands the line to {@link #onInfo(UaiInfo)}.
+         */
+        default void onInfo(Object token, UaiInfo info) {
+            onInfo(info);
+        }
+
         /** The engine's answer to the request made with {@code token}. */
         default void onBestMove(Object token, Move move) { }
 
@@ -59,7 +67,19 @@ public final class EngineSession implements AutoCloseable {
         UaiClient.Listener listener = new UaiClient.Listener() {
             @Override
             public void onInfo(UaiInfo info) {
-                callbacks.onInfo(info);
+                EngineSession s = holder[0];
+                if (s == null) {
+                    callbacks.onInfo(null, info);
+                    return;
+                }
+                Object token;
+                synchronized (s) {
+                    if (s.state != State.THINKING) {
+                        return; // a cancelled search may still print for a moment
+                    }
+                    token = s.activeToken;
+                }
+                callbacks.onInfo(token, info);
             }
 
             @Override
@@ -109,6 +129,16 @@ public final class EngineSession implements AutoCloseable {
             client.close();
             throw e instanceof UaiException u ? u : new UaiException(e.getMessage(), e);
         }
+    }
+
+    /** True while a search is running or being stopped. */
+    public synchronized boolean isSearching() {
+        return state != State.IDLE;
+    }
+
+    /** True while a stopped search has not yet been answered: an engine that stays in this state ignores {@code stop}. */
+    public synchronized boolean isCancelling() {
+        return state == State.CANCELLING;
     }
 
     /** The name the engine gave itself in the handshake. */

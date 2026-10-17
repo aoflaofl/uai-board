@@ -8,7 +8,9 @@ import javax.swing.JFrame;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
+import javax.swing.ButtonGroup;
 import javax.swing.JMenuItem;
+import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.KeyStroke;
 import javax.swing.event.MenuEvent;
@@ -105,6 +107,40 @@ public final class MainFrame extends JFrame {
         engines.addActionListener(e -> panel.manageEngines());
         JMenuItem console = new JMenuItem("Show Console");
         console.addActionListener(e -> panel.showConsole());
+        JCheckBoxMenuItem analyse = new JCheckBoxMenuItem("Analyse Position");
+        analyse.setAccelerator(shortcut(KeyEvent.VK_L));
+        analyse.addActionListener(e -> panel.setAnalysisEnabled(analyse.isSelected()));
+        panel.setAnalysisListener(analyse::setSelected);
+        JMenu analysisEngine = new JMenu("Analysis Engine");
+        // The list of engines can change, so the choices are rebuilt each time the menu is opened.
+        analysisEngine.addMenuListener(new MenuListener() {
+            @Override
+            public void menuSelected(MenuEvent e) {
+                analysisEngine.removeAll();
+                ButtonGroup group = new ButtonGroup();
+                String chosen = panel.analysisEngineName();
+                for (String name : panel.analysisEngineNames()) {
+                    JRadioButtonMenuItem item = new JRadioButtonMenuItem(name, name.equals(chosen));
+                    item.addActionListener(ev -> panel.chooseAnalysisEngine(name));
+                    group.add(item);
+                    analysisEngine.add(item);
+                }
+                if (analysisEngine.getItemCount() == 0) {
+                    JMenuItem none = new JMenuItem("(no engines: use Engines…)");
+                    none.setEnabled(false);
+                    analysisEngine.add(none);
+                }
+            }
+
+            @Override
+            public void menuDeselected(MenuEvent e) { }
+
+            @Override
+            public void menuCanceled(MenuEvent e) { }
+        });
+        engine.add(analyse);
+        engine.add(analysisEngine);
+        engine.addSeparator();
         engine.add(engines);
         engine.add(console);
 

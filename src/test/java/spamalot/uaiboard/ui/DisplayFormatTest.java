@@ -33,4 +33,13 @@ class DisplayFormatTest {
         assertEquals("+0", AnalysisPanel.formatScore(new UaiInfo.Score(false, 0)));
         assertEquals("mate -3", AnalysisPanel.formatScore(new UaiInfo.Score(true, -3)));
     }
+
+    @Test
+    void analysisScoresAreShownFromXsPointOfView() {
+        UaiInfo.Score s = new UaiInfo.Score(false, 40);
+        assertEquals("+40", AnalysisPanel.formatScore(AnalysisPanel.xView(s, spamalot.uaiboard.game.Side.X)));
+        assertEquals("-40", AnalysisPanel.formatScore(AnalysisPanel.xView(s, spamalot.uaiboard.game.Side.O)));
+        assertEquals("mate 2", AnalysisPanel.formatScore(AnalysisPanel.xView(new UaiInfo.Score(true, -2),
+                spamalot.uaiboard.game.Side.O)));
+    }
 }

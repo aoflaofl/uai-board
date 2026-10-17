@@ -13,9 +13,26 @@ import java.util.Properties;
 import spamalot.uaiboard.game.Side;
 
 /** The engines the user has set up and the last game setup, kept in a properties file. */
-public record Settings(List<EngineConfig> engines, GameSetup lastSetup) {
+public record Settings(List<EngineConfig> engines, GameSetup lastSetup, String analysisEngine) {
     public Settings {
         engines = List.copyOf(engines);
+    }
+
+    /** Settings without an analysis engine chosen. */
+    public Settings(List<EngineConfig> engines, GameSetup lastSetup) {
+        this(engines, lastSetup, null);
+    }
+
+    public Settings withAnalysisEngine(String name) {
+        return new Settings(engines, lastSetup, name);
+    }
+
+    public Settings withEngines(List<EngineConfig> newEngines) {
+        return new Settings(newEngines, lastSetup, analysisEngine);
+    }
+
+    public Settings withLastSetup(GameSetup setup) {
+        return new Settings(engines, setup, analysisEngine);
     }
 
     public static Settings empty() {
@@ -61,7 +78,8 @@ public record Settings(List<EngineConfig> engines, GameSetup lastSetup) {
         }
         Side side = "o".equals(p.getProperty("last.side")) ? Side.O : Side.X;
         TimeControl tc = TimeControl.parse(p.getProperty("last.timeControl", ""), GameSetup.DEFAULT.timeControl());
-        return new Settings(engines, new GameSetup(engineName, side, tc));
+        String analysis = p.getProperty("analysis.engine");
+        return new Settings(engines, new GameSetup(engineName, side, tc), analysis == null || analysis.isEmpty() ? null : analysis);
     }
 
     /** Options are stored as {@code <position>|<value>} so that their order survives the (unordered) properties file. */
@@ -99,6 +117,7 @@ public record Settings(List<EngineConfig> engines, GameSetup lastSetup) {
         p.setProperty("last.engine", lastSetup.engineName() == null ? "" : lastSetup.engineName());
         p.setProperty("last.side", lastSetup.humanSide() == Side.O ? "o" : "x");
         p.setProperty("last.timeControl", lastSetup.timeControl().format());
+        p.setProperty("analysis.engine", analysisEngine == null ? "" : analysisEngine);
         Path dir = file.toAbsolutePath().getParent();
         if (dir != null) {
             Files.createDirectories(dir);

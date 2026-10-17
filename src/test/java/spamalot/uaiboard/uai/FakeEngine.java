@@ -10,7 +10,8 @@ import spamalot.uaiboard.game.Position;
  * A tiny UAI engine for the client tests: it plays the first legal move. The one argument picks a misbehaviour: {@code silent}
  * never answers {@code uai}; {@code crash} exits on {@code go}; {@code badmove} answers {@code bestmove zz}; {@code slowready}
  * answers {@code isready} only after two seconds; {@code slow} thinks for 400 ms before every move; {@code illegal} answers
- * {@code bestmove d4}, which is illegal at the start; {@code mute} never answers {@code go}.
+ * {@code bestmove d4}, which is illegal at the start; {@code mute} never answers {@code go}; {@code chatty}
+ * prints a late {@code info string late} line when it is stopped; {@code deaf} ignores {@code stop}.
  */
 public final class FakeEngine {
     private FakeEngine() {}
@@ -66,8 +67,11 @@ public final class FakeEngine {
                     }
                 }
                 case "stop" -> {
-                    if (searching) {
+                    if (searching && !mode.equals("deaf")) {
                         searching = false;
+                        if (mode.equals("chatty")) {
+                            out("info string late");
+                        }
                         out("bestmove " + position.legalMoves().get(0));
                     }
                 }
